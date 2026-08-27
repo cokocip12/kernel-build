@@ -15,6 +15,16 @@ on:
         default: true
         type: boolean
 
+      ROOT_MANAGER:
+        description: "Pilih Root Manager"
+        required: true
+        default: "none"
+        type: choice
+        options:
+          - none
+          - kernelsu
+          - sukisu
+
 jobs:
   build:
     name: Whyred Kernel
@@ -105,9 +115,18 @@ jobs:
           echo "CROSS_COMPILE_ARM32=arm-linux-gnueabi-" >> "$GITHUB_ENV"
 
       - name: Install KernelSU
+        if: ${{ inputs.ROOT_MANAGER == 'kernelsu' }}
         working-directory: kernel
         run: |
+         echo "Installing KernelSU..."
          curl -LSs "https://raw.githubusercontent.com/backslashxx/KernelSU/master/kernel/setup.sh" | bash -
+  
+      - name: Install SukiSU-Ultra
+        if: ${{ inputs.ROOT_MANAGER == 'sukisu' }}
+        working-directory: kernel
+        run: |
+         echo "Installing SukiSU-Ultra..."
+         curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s builtin
 
       # ============================================================
       # CCACHE
