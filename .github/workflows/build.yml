@@ -548,19 +548,19 @@ jobs:
         # Wait for zram device
          i=0
          while [ "$i" -lt 10 ]; do
-    [ -d "$ZRAM" ] && break
-    sleep 1
-    i=$((i + 1))
-done
+         [ -d "$ZRAM" ] && break
+         sleep 1
+         i=$((i + 1))
+         done
 
-# Exit if zram does not exist
-[ -d "$ZRAM" ] || exit 0
+       # Exit if zram does not exist
+       [ -d "$ZRAM" ] || exit 0
 
-# Detect RAM in MB
-RAM_MB=$(awk '/MemTotal/ {print int($2 / 1024)}' /proc/meminfo)
+       # Detect RAM in MB
+       RAM_MB=$(awk '/MemTotal/ {print int($2 / 1024)}' /proc/meminfo)
 
-# Select zram size
-case "$RAM_MB" in
+       # Select zram size
+       case "$RAM_MB" in
     ''|*[!0-9]*)
         SIZE_MB=2048
         ;;
