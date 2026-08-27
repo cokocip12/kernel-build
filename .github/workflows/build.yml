@@ -24,6 +24,7 @@ on:
           - none
           - kernelsu
           - sukisu
+          - apatch
 
 jobs:
   build:
@@ -221,6 +222,23 @@ jobs:
 
           scripts/config --file "$BUILD_DIR/.config" \
             --enable CONFIG_KSU_TAMPER_SYSCALL_TABLE
+
+      # APatch
+      - name: Configure APatch
+        if: ${{ inputs.ROOT_MANAGER == 'apatch' }}
+        working-directory: kernel
+        run: |
+         scripts/config --file "$BUILD_DIR/.config" \
+         --enable CONFIG_KALLSYMS
+
+         scripts/config --file "$BUILD_DIR/.config" \
+         --enable CONFIG_KALLSYMS_ALL
+
+         make O="$BUILD_DIR" \
+         ARCH="$ARCH" \
+         CROSS_COMPILE="$CROSS_COMPILE" \
+         CROSS_COMPILE_ARM32="$CROSS_COMPILE_ARM32" \
+         olddefconfig
 
       # ============================================================
       # BUILD KERNEL
