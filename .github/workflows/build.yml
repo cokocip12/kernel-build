@@ -15,6 +15,18 @@ on:
         default: true
         type: boolean
 
+      CHARGE_LIMIT:
+        description: "USB Charging Current Limit"
+        required: true
+        default: "900mA"
+        type: choice
+        options:
+          - OFF
+          - 500mA
+          - 700mA
+          - 900mA
+          - 1200mA
+
       NETWORK:
         description: "Network/TCP tuning"
         required: true
@@ -804,6 +816,78 @@ jobs:
           echo "             WIFI TUNING"
           echo "=========================================="
           echo "Selected mode : $MODE"
+          echo "=========================================="
+
+      - name: Charger Current Limit
+        run: |
+          mkdir -p "$ANYKERNEL_DIR/tools"
+
+          MODE="${{ inputs.CHARGE_LIMIT }}"
+
+          if [ -z "$MODE" ]; then
+              MODE="900mA"
+          fi
+
+          case "$MODE" in
+            OFF)
+              LIMIT_UA=0
+              ;;
+            500mA)
+              LIMIT_UA=500000
+              ;;
+            700mA)
+              LIMIT_UA=700000
+              ;;
+            900mA)
+              LIMIT_UA=900000
+              ;;
+            1200mA)
+              LIMIT_UA=1200000
+              ;;
+            *)
+              echo "ERROR: CHARGE_LIMIT tidak valid: $MODE"
+              exit 1
+              ;;
+          esac
+
+          cat > "$ANYKERNEL_DIR/tools/charger-limit.sh" <<EOF
+          #!/system/bin/sh
+
+          MODE="$MODE"
+          LIMIT_UA="$LIMIT_UA"
+
+          # Jangan melakukan apa-apa jika OFF
+          if [ "\$MODE" = "OFF" ]; then
+              exit 0
+          fi
+
+          # Cari power-supply USB yang menyediakan current_max
+          for PSY in /sys/class/power_supply/*; do
+              [ -d "\$PSY" ] || continue
+
+              TYPE=""
+              [ -e "\$PSY/type" ] && TYPE=\$(cat "\$PSY/type" 2>/dev/null)
+
+              case "\$TYPE" in
+                  USB|USB_PD|USB_PD_PPS)
+                      if [ -e "\$PSY/current_max" ]; then
+                          echo "\$LIMIT_UA" > "\$PSY/current_max" 2>/dev/null
+                      fi
+                      ;;
+              esac
+          done
+
+          exit 0
+          EOF
+
+          chmod 755 "$ANYKERNEL_DIR/tools/charger-limit.sh"
+
+          echo "=========================================="
+          echo "        CHARGER CURRENT LIMIT"
+          echo "=========================================="
+          echo "Mode       : $MODE"
+          echo "Limit      : ${LIMIT_UA} uA"
+          echo "Limit      : $((LIMIT_UA / 1000)) mA"
           echo "=========================================="
           
       # ============================================================
