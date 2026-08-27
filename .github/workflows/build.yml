@@ -423,45 +423,61 @@ jobs:
         run: |
           set -e
 
-          export PATH="/usr/lib/ccache:$PATH"
-
           export ARCH=arm64
           export SUBARCH=arm64
-
           export CROSS_COMPILE=aarch64-linux-gnu-
           export CROSS_COMPILE_ARM32=arm-linux-gnueabi-
 
-          export KCFLAGS="-mno-outline-atomics"
-
           echo "======================================"
-          echo "BUILDING WHYRED"
-          echo "======================================"
-
-          echo "ARCH=$ARCH"
-          echo "SUBARCH=$SUBARCH"
-          echo "CROSS_COMPILE=$CROSS_COMPILE"
-          echo "CROSS_COMPILE_ARM32=$CROSS_COMPILE_ARM32"
-          echo "KCFLAGS=$KCFLAGS"
-
-          echo ""
-          echo "AArch64:"
-          aarch64-linux-gnu-gcc --version | head -1
-
-          echo ""
-          echo "ARM32:"
-          arm-linux-gnueabi-gcc --version | head -1
-
-          echo ""
+          echo "BUILDING WHYRED KERNEL"
           echo "======================================"
 
           make -j"$(nproc)" \
             O="$BUILD_DIR" \
-            ARCH=arm64 \
-            SUBARCH=arm64 \
+            ARCH="$ARCH" \
+            SUBARCH="$SUBARCH" \
             CROSS_COMPILE="$CROSS_COMPILE" \
             CROSS_COMPILE_ARM32="$CROSS_COMPILE_ARM32" \
-            KCFLAGS="$KCFLAGS" \
-            V=1
+            Image
+
+          test -f "$BUILD_DIR/arch/arm64/boot/Image"
+
+          echo "=== RAW IMAGE ==="
+          ls -lh "$BUILD_DIR/arch/arm64/boot/Image"
+
+      - name: Compress kernel with LZ4HC
+        run: |
+          set -e
+
+          sudo apt-get update
+          sudo apt-get install -y lz4
+
+          mkdir -p kernel-output
+
+          INPUT="$BUILD_DIR/arch/arm64/boot/Image"
+          OUTPUT="$GITHUB_WORKSPACE/kernel-output/Image.lz4"
+
+          test -f "$INPUT"
+
+          echo "======================================"
+          echo "LZ4HC KERNEL COMPRESSION"
+          echo "======================================"
+
+          # lz4 -HC uses high-compression mode.
+          # Level is intentionally not forced to 17.
+          lz4 -HC \
+            "$INPUT" \
+            "$OUTPUT"
+
+          test -f "$OUTPUT"
+
+          echo "=== LZ4HC IMAGE ==="
+          ls -lh "$OUTPUT"
+
+          echo "=== VERIFY ==="
+          lz4 -t "$OUTPUT"
+
+          echo "LZ4HC compression: OK"
 
       # ============================================================
       # CHECK OUTPUT
@@ -527,6 +543,29 @@ jobs:
             -b whyred \
             https://github.com/d1aznr/AnyKernel3.git \
             "$ANYKERNEL_DIR"
+
+      # ============================================================
+      # PUT LZ4 KERNEL INTO ANYKERNEL3
+      # ============================================================
+      - name: Prepare AnyKernel3 LZ4 image
+        run: |
+          set -e
+
+          cd "$ANYKERNEL_DIR"
+
+          rm -f Image
+          rm -f Image.gz
+          rm -f Image.gz-dtb
+          rm -f Image.lz4
+          rm -f Image.lz4-dtb
+
+          cp "$GITHUB_WORKSPACE/kernel-output/Image.lz4" \
+            "$ANYKERNEL_DIR/Image.lz4"
+
+          test -f "$ANYKERNEL_DIR/Image.lz4"
+
+          echo "=== ANYKERNEL3 KERNEL ==="
+          ls -lh "$ANYKERNEL_DIR/Image.lz4"
 
       # ============================================================
       # AUTOMATIC ZRAM
@@ -633,9 +672,19 @@ jobs:
 
           cd "$ANYKERNEL_DIR"
 
-          rm -f Image
-          rm -f Image.gz
-          rm -f Image.gz-dtb
+          test -f Image.lz4
+
+          zip -r9 \
+            "$GITHUB_WORKSPACE/Whyred-Kernel-LZ4HC-${GITHUB_RUN_NUMBER}.zip" \
+            . \
+            -x ".git/*"
+
+          echo "======================================"
+          echo "ANYKERNEL3 ZIP CREATED"
+          echo "======================================"
+
+          ls -lh \
+            "$GITHUB_WORKSPACE/Whyred-Kernel-LZ4HC-${GITHUB_RUN_NUMBER}.zip"
       
 
       # ============================================================
