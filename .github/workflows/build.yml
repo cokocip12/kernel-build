@@ -293,16 +293,28 @@ jobs:
         if: ${{ inputs.ZRAM }}
         working-directory: kernel
         run: |
-         scripts/config --file out/.config \
-            --enable CONFIG_ZRAM
+         set -e
 
-         scripts/config --file out/.config \
-            --enable CONFIG_ZSMALLOC
+         test -f "$BUILD_DIR/.config" || {
+         echo "ERROR: $BUILD_DIR/.config tidak ditemukan"
+         exit 1
+         }
 
-         make O=out ARCH=arm64 olddefconfig
+         scripts/config --file "$BUILD_DIR/.config" \
+         --enable CONFIG_ZRAM
+
+         scripts/config --file "$BUILD_DIR/.config" \
+         --enable CONFIG_ZSMALLOC
+
+         make O="$BUILD_DIR" \
+         ARCH="$ARCH" \
+         CROSS_COMPILE="$CROSS_COMPILE" \
+         CROSS_COMPILE_ARM32="$CROSS_COMPILE_ARM32" \
+         olddefconfig
 
          echo "=== ZRAM CONFIG ==="
-         grep -E '^CONFIG_ZRAM=|^CONFIG_ZSMALLOC=' out/.config || true
+         grep -E '^CONFIG_ZRAM=|^CONFIG_ZSMALLOC=' \
+         "$BUILD_DIR/.config" || true
 
       - name: Configure KALLSYMS for APatch
         if: ${{ inputs.ROOT_MANAGER == 'apatch' }}
