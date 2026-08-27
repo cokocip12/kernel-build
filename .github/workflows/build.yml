@@ -26,6 +26,7 @@ on:
           - sukisu
           - apatch
           - resukisu
+          - mambosu
 
 jobs:
   build:
@@ -136,6 +137,13 @@ jobs:
         run: |
          echo "Installing ReSukiSU..."
          curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/main/kernel/setup.sh" | bash -
+
+      - name: Install MamboSU
+        if: ${{ inputs.ROOT_MANAGER == 'mambosu' }}
+        working-directory: kernel
+        run: |
+         echo "Installing MamboSU..."
+         curl -LSs "https://raw.githubusercontent.com/RapliVx/KernelSU/refs/heads/master/kernel/setup.sh" | bash -s master
       
       # ============================================================
       # CCACHE
@@ -261,6 +269,27 @@ jobs:
 
           scripts/config --file "$BUILD_DIR/.config" \
             --enable CONFIG_KSU_TAMPER_SYSCALL_TABLE
+
+      - name: Configure MamboSU
+        if: ${{ inputs.ROOT_MANAGER == 'mambosu' }}
+        working-directory: kernel
+        run: |
+         echo "=== Configuring MamboSU ==="
+
+         scripts/config --file "$BUILD_DIR/.config" \
+         --enable CONFIG_KSU
+
+         scripts/config --file "$BUILD_DIR/.config" \
+         --enable CONFIG_KSU_TAMPER_SYSCALL_TABLE
+
+         make O="$BUILD_DIR" \
+         ARCH="$ARCH" \
+         CROSS_COMPILE="$CROSS_COMPILE" \
+         CROSS_COMPILE_ARM32="$CROSS_COMPILE_ARM32" \
+         olddefconfig
+
+         echo "=== MamboSU configuration ==="
+         grep -E '^CONFIG_KSU(=|_)' "$BUILD_DIR/.config" || true
 
       # APatch
       - name: Configure APatch
