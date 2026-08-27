@@ -27,6 +27,7 @@ on:
           - apatch
           - resukisu
           - mambosu
+          - Ksun
 
 jobs:
   build:
@@ -143,7 +144,16 @@ jobs:
         working-directory: kernel
         run: |
          echo "Installing MamboSU..."
-         curl -LSs "https://raw.githubusercontent.com/RapliVx/KernelSU/refs/heads/master/kernel/setup.sh" | bash -s master
+         curl -LSs "https://raw.githubusercontent.com/RapliVx/KernelSU/refs/heads/master/kernel/setup.sh" | bash -master
+
+      - name: Install KernelSU Next
+        if: ${{ inputs.ROOT_MANAGER == 'ksun' }}
+        working-directory: kernel
+        run: |
+         echo "=== Installing KernelSU Next ==="
+
+         curl -LSs \
+         "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -
       
       # ============================================================
       # CCACHE
@@ -290,6 +300,16 @@ jobs:
 
          echo "=== MamboSU configuration ==="
          grep -E '^CONFIG_KSU(=|_)' "$BUILD_DIR/.config" || true
+
+      - name: Configure KernelSU Next
+        if: ${{ inputs.ROOT_MANAGER == 'Ksun' }}
+        working-directory: kernel
+        run: |
+          scripts/config --file "$BUILD_DIR/.config" \
+            --enable CONFIG_KSU
+
+          scripts/config --file "$BUILD_DIR/.config" \
+            --enable CONFIG_KSU_TAMPER_SYSCALL_TABLE
 
       # APatch
       - name: Configure APatch
