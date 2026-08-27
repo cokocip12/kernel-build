@@ -247,48 +247,6 @@ jobs:
             'CONFIG_ARCH_QCOM|CONFIG_ARCH_SDM660|CONFIG_PREEMPT|CONFIG_CC_STACKPROTECTOR' \
             "$BUILD_DIR/.config" || true
 
-      - name: Configure CPU OC
-        if: ${{ inputs.OC != 'off' }}
-        working-directory: kernel
-        run: |
-          set -e
-
-          echo "Selected OC: ${{ inputs.OC }}"
-
-          case "${{ inputs.OC }}" in
-            2.0GHz)
-              OC_FREQ=2000000
-              ;;
-            2.2GHz)
-              OC_FREQ=2200000
-              ;;
-            2.3GHz)
-              OC_FREQ=2300000
-              ;;
-            2.45GHz)
-              OC_FREQ=2450000
-              ;;
-            *)
-              echo "Invalid OC profile"
-              exit 1
-              ;;
-          esac
-
-          echo "Requested frequency: ${OC_FREQ} kHz"
-
-          # Cari frequency table yang benar-benar ada di source.
-          echo "=== Searching CPU frequency tables ==="
-
-          grep -RniE \
-            "2000000|2200000|2300000|2450000|2457600" \
-            arch/arm64 drivers 2>/dev/null || true
-
-          echo ""
-          echo "NOTE:"
-          echo "Workflow tidak akan membuat frequency/voltage OPP baru."
-          echo "OC hanya aman jika frequency tersebut memang didukung"
-          echo "oleh CPU clock/OPP/DT source."
-
       - name: Enable ZRAM
         if: ${{ inputs.ZRAM }}
         working-directory: kernel
