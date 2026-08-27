@@ -528,21 +528,6 @@ jobs:
             https://github.com/d1aznr/AnyKernel3.git \
             "$ANYKERNEL_DIR"
 
-      
-
-      # ============================================================
-      # PACKAGE ANYKERNEL3
-      # ============================================================
-      - name: Package flashable ZIP
-        run: |
-          set -e
-
-          cd "$ANYKERNEL_DIR"
-
-          rm -f Image
-          rm -f Image.gz
-          rm -f Image.gz-dtb
-
       - name: Add Automatic ZRAM
         if: ${{ inputs.ZRAM }}
         run: |
@@ -619,6 +604,20 @@ jobs:
             "$GITHUB_WORKSPACE/Whyred-Kernel-${GITHUB_RUN_NUMBER}.zip" \
             . \
             -x ".git/*"
+
+      # ============================================================
+      # PACKAGE ANYKERNEL3
+      # ============================================================
+      - name: Package flashable ZIP
+        run: |
+          set -e
+
+          cd "$ANYKERNEL_DIR"
+
+          rm -f Image
+          rm -f Image.gz
+          rm -f Image.gz-dtb
+      
 
       # ============================================================
       # CCACHE
