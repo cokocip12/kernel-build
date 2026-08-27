@@ -203,6 +203,7 @@ jobs:
             "$BUILD_DIR/.config" || true
 
       - name: Configure KernelSU
+        if: ${{ inputs.ROOT_MANAGER == 'kernelsu' }}
         working-directory: kernel
         run: |
           scripts/config --file "$BUILD_DIR/.config" \
@@ -220,6 +221,29 @@ jobs:
           echo "KernelSU config:"
           grep -E 'CONFIG_KSU=' "$BUILD_DIR/.config" || true
           grep -E 'CONFIG_KSU_TAMPER_SYSCALL_TABLE=' "$BUILD_DIR/.config" || true
+
+      - name: Configure SukiSU-Ultra
+        if: ${{ inputs.ROOT_MANAGER == 'sukisu' }}
+        working-directory: kernel
+        run: |
+         scripts/config --file "$BUILD_DIR/.config" \
+         --enable CONFIG_KSU
+
+         scripts/config --file "$BUILD_DIR/.config" \
+         --enable CONFIG_KALLSYMS
+
+         scripts/config --file "$BUILD_DIR/.config" \
+         --enable CONFIG_KALLSYMS_ALL
+
+         make O="$BUILD_DIR" \
+         ARCH="$ARCH" \
+         CROSS_COMPILE="$CROSS_COMPILE" \
+         CROSS_COMPILE_ARM32="$CROSS_COMPILE_ARM32" \
+         olddefconfig
+
+         echo "SukiSU config:"
+         grep -E 'CONFIG_KSU=|CONFIG_KALLSYMS=|CONFIG_KALLSYMS_ALL=' \
+         "$BUILD_DIR/.config" || true
 
       # ============================================================
       # BUILD KERNEL
