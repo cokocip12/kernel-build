@@ -15,6 +15,37 @@ on:
         default: true
         type: boolean
 
+      NETWORK:
+        description: "Network/TCP tuning"
+        required: true
+        default: "off"
+        type: choice
+        options:
+          - "off"
+          - "westwood"
+          - "cubic"
+          - "bbr"
+
+      WIFI_TUNING:
+        description: "Wi-Fi Tuning"
+        required: true
+        default: "BALANCED"
+        type: choice
+        options:
+          - OFF
+          - BALANCED
+          - PERFORMANCE
+
+      VM_TUNING:
+        description: "Pilih VM / Memory Tuning"
+        required: true
+        default: "BALANCED"
+        type: choice
+        options:
+          - OFF
+          - BALANCED
+          - PERFORMANCE
+
       OC:
         description: "CPU Overclock"
         required: true
@@ -416,6 +447,84 @@ jobs:
           echo "before modifying the OPP/LUT."
 
       # ============================================================
+      # NETWORK / TCP TUNING
+      # ============================================================
+      - name: Configure Network Tuning
+        if: ${{ inputs.NETWORK != 'off' }}
+        working-directory: kernel
+        shell: bash
+        run: |
+          set -e
+
+          echo "======================================"
+          echo "NETWORK / TCP TUNING"
+          echo "======================================"
+
+          NETWORK="${{ inputs.NETWORK }}"
+
+          echo "Selected profile: $NETWORK"
+
+          case "$NETWORK" in
+
+            westwood)
+              echo "Using TCP Westwood"
+
+              scripts/config --file "$BUILD_DIR/.config" \
+                --enable CONFIG_TCP_CONG_ADVANCED
+
+              scripts/config --file "$BUILD_DIR/.config" \
+                --enable CONFIG_TCP_CONG_WESTWOOD
+
+              scripts/config --file "$BUILD_DIR/.config" \
+                --set-str CONFIG_DEFAULT_TCP_CONG "westwood"
+              ;;
+
+            cubic)
+              echo "Using TCP CUBIC"
+
+              scripts/config --file "$BUILD_DIR/.config" \
+                --enable CONFIG_TCP_CONG_ADVANCED
+
+              scripts/config --file "$BUILD_DIR/.config" \
+                --enable CONFIG_TCP_CONG_CUBIC
+
+              scripts/config --file "$BUILD_DIR/.config" \
+                --set-str CONFIG_DEFAULT_TCP_CONG "cubic"
+              ;;
+
+            bbr)
+              echo "Using BBR + FQ"
+
+              scripts/config --file "$BUILD_DIR/.config" \
+                --enable CONFIG_TCP_CONG_ADVANCED
+
+              scripts/config --file "$BUILD_DIR/.config" \
+                --enable CONFIG_TCP_CONG_BBR
+
+              scripts/config --file "$BUILD_DIR/.config" \
+                --enable CONFIG_NET_SCH_FQ
+
+              scripts/config --file "$BUILD_DIR/.config" \
+                --set-str CONFIG_DEFAULT_TCP_CONG "bbr"
+              ;;
+
+            *)
+              echo "ERROR: Unknown network profile: $NETWORK"
+              exit 1
+              ;;
+          esac
+
+          echo ""
+          echo "=== FINAL TCP CONFIG ==="
+
+          grep -E \
+            'CONFIG_TCP_CONG_|CONFIG_NET_SCH_FQ|CONFIG_DEFAULT_TCP_CONG' \
+            "$BUILD_DIR/.config" || true
+
+          echo ""
+          echo "Network tuning configured successfully."
+
+      # ============================================================
       # BUILD RAW KERNEL
       # ============================================================
       - name: Build kernel
@@ -445,8 +554,8 @@ jobs:
           echo "=== RAW IMAGE ==="
           ls -lh "$BUILD_DIR/arch/arm64/boot/Image"
 
-      # ============================================================
-      # COMPRESS KERNEL WITH LZ4HC
+            # ============================================================
+      # COMPRESS KERNEL IMAGE WITH LZ4HC
       # ============================================================
       - name: Compress kernel with LZ4HC
         working-directory: kernel
@@ -454,40 +563,47 @@ jobs:
         run: |
           set -e
 
-          echo "=== CHECK KERNEL IMAGE ==="
+          echo "======================================"
+          echo "COMPRESS KERNEL WITH LZ4HC"
+          echo "======================================"
 
-          INPUT="arch/arm64/boot/Image"
-          OUTPUT="arch/arm64/boot/Image.lz4"
+          IMAGE="$BUILD_DIR/arch/arm64/boot/Image"
 
-          if [ ! -f "$INPUT" ]; then
+          echo "Looking for:"
+          echo "$IMAGE"
+
+          if [ ! -f "$IMAGE" ]; then
             echo "ERROR: Image tidak ditemukan!"
-            find arch/arm64/boot -maxdepth 1 -type f -printf '%f\n'
-            exit 1
-          fi
-
-          echo "Input : $INPUT"
-          echo "Output: $OUTPUT"
-
-          echo ""
-          echo "=== LZ4 VERSION ==="
-          lz4 --version
-
-          echo ""
-          echo "=== COMPRESS LZ4HC ==="
-
-          rm -f "$OUTPUT"
-
-          lz4 -12 -f "$INPUT" "$OUTPUT"
-
-          if [ ! -s "$OUTPUT" ]; then
-            echo "ERROR: Image.lz4 gagal dibuat!"
+            echo ""
+            echo "Searching available Image files:"
+            find "$BUILD_DIR" -type f \
+              \( -name "Image" -o -name "Image.gz" -o -name "Image.gz-dtb" \) \
+              -print
             exit 1
           fi
 
           echo ""
-          echo "=== SUCCESS ==="
-          ls -lh "$INPUT"
-          ls -lh "$OUTPUT"
+          echo "Image ditemukan:"
+          ls -lh "$IMAGE"
+
+          # Install LZ4
+          sudo apt-get update
+          sudo apt-get install -y lz4
+
+          # Compress menggunakan LZ4HC
+          lz4 -9 -f "$IMAGE" "$BUILD_DIR/arch/arm64/boot/Image.lz4"
+
+          echo ""
+          echo "======================================"
+          echo "LZ4HC RESULT"
+          echo "======================================"
+
+          ls -lh \
+            "$IMAGE" \
+            "$BUILD_DIR/arch/arm64/boot/Image.lz4"
+
+          echo ""
+          echo "Image.lz4 berhasil dibuat."
 
       # ============================================================
       # CHECK OUTPUT
@@ -554,6 +670,142 @@ jobs:
             https://github.com/d1aznr/AnyKernel3.git \
             "$ANYKERNEL_DIR"
 
+      - name: VM Tuning
+        run: |
+          mkdir -p "$ANYKERNEL_DIR/tools"
+
+          MODE="${{ inputs.VM_TUNING }}"
+
+          # Jika input kosong, gunakan BALANCED
+          if [ -z "$MODE" ]; then
+              MODE="BALANCED"
+          fi
+
+          # Validasi mode
+          if [ "$MODE" != "OFF" ] && \
+             [ "$MODE" != "BALANCED" ] && \
+             [ "$MODE" != "PERFORMANCE" ]; then
+              echo "ERROR: VM_TUNING tidak valid: $MODE"
+              exit 1
+          fi
+
+          cat > "$ANYKERNEL_DIR/tools/vm-tuning.sh" <<EOF
+          #!/system/bin/sh
+
+          MODE="$MODE"
+
+          setval() {
+              if [ -e "\$1" ]; then
+                  echo "\$2" > "\$1" 2>/dev/null
+              fi
+          }
+
+          case "\$MODE" in
+
+            OFF)
+              exit 0
+              ;;
+
+            BALANCED)
+              setval /proc/sys/vm/swappiness 20
+              setval /proc/sys/vm/dirty_ratio 15
+              setval /proc/sys/vm/dirty_background_ratio 5
+              setval /proc/sys/vm/dirty_expire_centisecs 3000
+              setval /proc/sys/vm/dirty_writeback_centisecs 1500
+              setval /proc/sys/vm/vfs_cache_pressure 75
+              setval /proc/sys/vm/page-cluster 0
+              ;;
+
+            PERFORMANCE)
+              setval /proc/sys/vm/swappiness 10
+              setval /proc/sys/vm/dirty_ratio 20
+              setval /proc/sys/vm/dirty_background_ratio 5
+              setval /proc/sys/vm/dirty_expire_centisecs 2000
+              setval /proc/sys/vm/dirty_writeback_centisecs 1000
+              setval /proc/sys/vm/vfs_cache_pressure 50
+              setval /proc/sys/vm/page-cluster 0
+              ;;
+
+          esac
+
+          exit 0
+          EOF
+
+          chmod 755 "$ANYKERNEL_DIR/tools/vm-tuning.sh"
+
+          echo "=========================================="
+          echo "              VM TUNING"
+          echo "=========================================="
+          echo "Selected mode : $MODE"
+          echo "=========================================="
+
+      - name: WiFi Tuning
+        run: |
+          mkdir -p "$ANYKERNEL_DIR/tools"
+
+          MODE="${{ inputs.WIFI_TUNING }}"
+
+          # Jika input kosong, gunakan BALANCED
+          if [ -z "$MODE" ]; then
+              MODE="BALANCED"
+          fi
+
+          # Validasi mode
+          if [ "$MODE" != "OFF" ] && \
+             [ "$MODE" != "BALANCED" ] && \
+             [ "$MODE" != "PERFORMANCE" ]; then
+              echo "ERROR: WIFI_TUNING tidak valid: $MODE"
+              exit 1
+          fi
+
+          cat > "$ANYKERNEL_DIR/tools/wifi-tuning.sh" <<EOF
+          #!/system/bin/sh
+
+          MODE="$MODE"
+
+          case "\$MODE" in
+
+            OFF)
+              exit 0
+              ;;
+
+            BALANCED)
+              for IFACE in /sys/class/net/wlan*; do
+                  [ -d "\$IFACE" ] || continue
+
+                  NAME=\$(basename "\$IFACE")
+
+                  if command -v iw >/dev/null 2>&1; then
+                      iw dev "\$NAME" set power_save on 2>/dev/null
+                  fi
+              done
+              ;;
+
+            PERFORMANCE)
+              for IFACE in /sys/class/net/wlan*; do
+                  [ -d "\$IFACE" ] || continue
+
+                  NAME=\$(basename "\$IFACE")
+
+                  if command -v iw >/dev/null 2>&1; then
+                      iw dev "\$NAME" set power_save off 2>/dev/null
+                  fi
+              done
+              ;;
+
+          esac
+
+          exit 0
+          EOF
+
+          chmod 755 "$ANYKERNEL_DIR/tools/wifi-tuning.sh"
+
+          echo "=========================================="
+          echo "             WIFI TUNING"
+          echo "=========================================="
+          echo "Selected mode : $MODE"
+          echo "=========================================="
+          
       # ============================================================
       # PUT LZ4 KERNEL INTO ANYKERNEL3
       # ============================================================
