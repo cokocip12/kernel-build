@@ -16,17 +16,13 @@ on:
         type: boolean
 
       OC:
-        description: "CPU Overclock Profile"
+        description: "CPU Overclock"
         required: true
         default: "off"
         type: choice
         options:
           - off
-          - 2.0GHz
-          - 2.2GHz
-          - 2.3GHz
           - 2.45GHz
-
       ZRAM:
         description: "Enable Automatic ZRAM"
         required: true
@@ -374,7 +370,53 @@ jobs:
          olddefconfig
 
       # ============================================================
-      # BUILD KERNEL
+      # CPU OVERCLOCK - BIG CLUSTER 2.45GHz
+      # ============================================================
+      - name: Configure CPU OC
+        if: ${{ inputs.OC == '2.45GHz' }}
+        working-directory: kernel
+        run: |
+          set -e
+
+          echo "======================================"
+          echo "WHYRED BIG CLUSTER OC"
+          echo "======================================"
+
+          DTS_DIR="arch/arm/boot/dts/qcom"
+
+          echo "Searching perfcl speed-bin tables..."
+
+          grep -Rni \
+            "qcom,perfcl-speedbin" \
+            "$DTS_DIR" \
+            2>/dev/null || true
+
+          echo ""
+          echo "Searching existing 2.4576GHz entries..."
+
+          grep -Rni \
+            "2457600000" \
+            "$DTS_DIR" \
+            2>/dev/null || true
+
+          echo ""
+          echo "Searching Big-cluster frequencies..."
+
+          grep -RniE \
+            "1958400000|2150400000|2208000000" \
+            "$DTS_DIR" \
+            2>/dev/null || true
+
+          echo ""
+          echo "======================================"
+          echo "IMPORTANT"
+          echo "======================================"
+          echo "No blind global replacement will be performed."
+          echo "The correct perfcl speed-bin table must be identified"
+          echo "before modifying the OPP/LUT."
+
+      # ============================================================
+      # BUILD RAW KERNEL
       # ============================================================
       - name: Build kernel
         working-directory: kernel
@@ -403,39 +445,50 @@ jobs:
           echo "=== RAW IMAGE ==="
           ls -lh "$BUILD_DIR/arch/arm64/boot/Image"
 
+      # ============================================================
+      # COMPRESS KERNEL WITH LZ4HC
+      # ============================================================
       - name: Compress kernel with LZ4HC
+        working-directory: kernel
+        shell: bash
         run: |
           set -e
-
-          sudo apt-get update
-          sudo apt-get install -y lz4
-
-          mkdir -p kernel-output
-
-          INPUT="$BUILD_DIR/arch/arm64/boot/Image"
-          OUTPUT="$GITHUB_WORKSPACE/kernel-output/Image.lz4"
-
-          test -f "$INPUT"
 
           echo "======================================"
           echo "LZ4HC KERNEL COMPRESSION"
           echo "======================================"
 
-          # lz4 -HC uses high-compression mode.
-          # Level is intentionally not forced to 17.
-          lz4 -HC \
-            "$INPUT" \
-            "$OUTPUT"
+          INPUT="arch/arm64/boot/Image"
+          OUTPUT="arch/arm64/boot/Image.lz4"
 
-          test -f "$OUTPUT"
+          if [ ! -f "$INPUT" ]; then
+            echo "ERROR: Kernel Image not found:"
+            echo "$INPUT"
+            exit 1
+          fi
 
-          echo "=== LZ4HC IMAGE ==="
+          echo "Input : $INPUT"
+          echo "Output: $OUTPUT"
+
+          rm -f "$OUTPUT"
+
+          # LZ4 High Compression level 12
+          lz4 -12 -f "$INPUT" "$OUTPUT"
+
+          if [ ! -f "$OUTPUT" ]; then
+            echo "ERROR: Image.lz4 was not created!"
+            exit 1
+          fi
+
+          echo ""
+          echo "======================================"
+          echo "LZ4HC SUCCESS"
+          echo "======================================"
+
+          ls -lh "$INPUT"
           ls -lh "$OUTPUT"
 
-          echo "=== VERIFY ==="
-          lz4 -t "$OUTPUT"
-
-          echo "LZ4HC compression: OK"
+          file "$OUTPUT"
 
       # ============================================================
       # CHECK OUTPUT
