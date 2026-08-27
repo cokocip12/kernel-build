@@ -15,6 +15,12 @@ on:
         default: true
         type: boolean
 
+      ZRAM:
+        description: "Enable Automatic ZRAM"
+        required: true
+        default: true
+        type: boolean
+
       ROOT_MANAGER:
         description: "Pilih Root Manager"
         required: true
@@ -230,6 +236,8 @@ jobs:
             "$BUILD_DIR/.config" || true
 
       - name: Enable ZRAM
+        if: ${{ inputs.ZRAM }}
+        working-directory: kernel
         run: |
          scripts/config --file out/.config \
             --enable CONFIG_ZRAM
@@ -455,6 +463,8 @@ jobs:
             "$ANYKERNEL_DIR"
 
       - name: Add Automatic ZRAM
+        if: ${{ inputs.ZRAM }}
+        working-directory: kernel
         run: |
           mkdir -p AnyKernel3/tools
 
