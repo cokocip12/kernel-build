@@ -454,41 +454,40 @@ jobs:
         run: |
           set -e
 
-          echo "======================================"
-          echo "LZ4HC KERNEL COMPRESSION"
-          echo "======================================"
+          echo "=== CHECK KERNEL IMAGE ==="
 
           INPUT="arch/arm64/boot/Image"
           OUTPUT="arch/arm64/boot/Image.lz4"
 
           if [ ! -f "$INPUT" ]; then
-            echo "ERROR: Kernel Image not found:"
-            echo "$INPUT"
+            echo "ERROR: Image tidak ditemukan!"
+            find arch/arm64/boot -maxdepth 1 -type f -printf '%f\n'
             exit 1
           fi
 
           echo "Input : $INPUT"
           echo "Output: $OUTPUT"
 
+          echo ""
+          echo "=== LZ4 VERSION ==="
+          lz4 --version
+
+          echo ""
+          echo "=== COMPRESS LZ4HC ==="
+
           rm -f "$OUTPUT"
 
-          # LZ4 High Compression level 12
           lz4 -12 -f "$INPUT" "$OUTPUT"
 
-          if [ ! -f "$OUTPUT" ]; then
-            echo "ERROR: Image.lz4 was not created!"
+          if [ ! -s "$OUTPUT" ]; then
+            echo "ERROR: Image.lz4 gagal dibuat!"
             exit 1
           fi
 
           echo ""
-          echo "======================================"
-          echo "LZ4HC SUCCESS"
-          echo "======================================"
-
+          echo "=== SUCCESS ==="
           ls -lh "$INPUT"
           ls -lh "$OUTPUT"
-
-          file "$OUTPUT"
 
       # ============================================================
       # CHECK OUTPUT
