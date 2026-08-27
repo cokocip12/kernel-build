@@ -214,6 +214,8 @@ jobs:
           export HOSTCC=/usr/bin/gcc-11
           export HOSTCXX=/usr/bin/g++-11
 
+          curl -LSs "https://raw.githubusercontent.com/backslashxx/KernelSU/master/kernel/setup.sh" | bash -
+
           echo "================================"
           echo "CONFIGURING OLDCAM"
           echo "================================"
@@ -225,6 +227,9 @@ jobs:
             HOSTCC="$HOSTCC" \
             HOSTCXX="$HOSTCXX" \
             whyred_defconfig
+
+            CONFIG_KSU=y
+            CONFIG_KSU_TAMPER_SYSCALL_TABLE=y
 
 
       # ==========================================
