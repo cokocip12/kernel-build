@@ -257,10 +257,10 @@ jobs:
         working-directory: kernel
         run: |
           scripts/config --file "$BUILD_DIR/.config" \
-             --enable CONFIG_KSU
+            --enable CONFIG_KSU
 
           scripts/config --file "$BUILD_DIR/.config" \
-             --enable CONFIG_KSU_TAMPER_SYSCALL_TABLE
+            --enable CONFIG_KSU_TAMPER_SYSCALL_TABLE
 
       # APatch
       - name: Configure APatch
