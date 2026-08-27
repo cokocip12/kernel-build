@@ -566,7 +566,7 @@ jobs:
           echo "=== RAW IMAGE ==="
           ls -lh "$BUILD_DIR/arch/arm64/boot/Image"
 
-            # ============================================================
+       # ============================================================
       # COMPRESS KERNEL IMAGE WITH LZ4HC
       # ============================================================
       - name: Compress kernel with LZ4HC
@@ -893,26 +893,40 @@ jobs:
       # ============================================================
       # PUT LZ4 KERNEL INTO ANYKERNEL3
       # ============================================================
-      - name: Prepare AnyKernel3 LZ4 image
+      - name: Prepare AnyKernel3 | LZ4 image
         run: |
           set -e
 
-          cd "$ANYKERNEL_DIR"
+          echo "=== Searching kernel image ==="
 
-          rm -f Image
-          rm -f Image.gz
-          rm -f Image.gz-dtb
-          rm -f Image.lz4
-          rm -f Image.lz4-dtb
+          IMAGE_LZ4=""
 
-          cp "$GITHUB_WORKSPACE/kernel-output/Image.lz4" \
-            "$ANYKERNEL_DIR/Image.lz4"
+          for f in \
+            "$BUILD_DIR/output/Image.lz4" \
+            "$BUILD_DIR/arch/arm64/boot/Image.lz4" \
+            "$BUILD_DIR/Image.lz4"
+          do
+            if [ -f "$f" ]; then
+              IMAGE_LZ4="$f"
+              break
+            fi
+          done
 
-          test -f "$ANYKERNEL_DIR/Image.lz4"
+          if [ -z "$IMAGE_LZ4" ]; then
+            echo "ERROR: Image.lz4 tidak ditemukan!"
+            echo "=== Available images ==="
+            find "$BUILD_DIR" -type f \
+              \( -name "Image" -o -name "Image.gz" -o -name "Image.gz-dtb" -o -name "Image.lz4" \) \
+              -print
+            exit 1
+          fi
 
-          echo "=== ANYKERNEL3 KERNEL ==="
+          echo "Found: $IMAGE_LZ4"
+
+          cp "$IMAGE_LZ4" "$ANYKERNEL_DIR/Image.lz4"
+
+          echo "=== AnyKernel3 files ==="
           ls -lh "$ANYKERNEL_DIR/Image.lz4"
-
       # ============================================================
       # AUTOMATIC ZRAM
       # ============================================================
