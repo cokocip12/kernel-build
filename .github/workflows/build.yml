@@ -25,6 +25,7 @@ on:
           - kernelsu
           - sukisu
           - apatch
+          - resukisu
 
 jobs:
   build:
@@ -129,6 +130,13 @@ jobs:
          echo "Installing SukiSU-Ultra..."
          curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -
 
+      - name: Install ReSukiSU
+        if: ${{ inputs.ROOT_MANAGER == 'resukisu' }}
+        working-directory: kernel
+        run: |
+         echo "Installing ReSukiSU..."
+         curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/main/kernel/setup.sh" | bash -
+      
       # ============================================================
       # CCACHE
       # ============================================================
@@ -243,6 +251,16 @@ jobs:
 
           scripts/config --file "$BUILD_DIR/.config" \
             --enable CONFIG_KSU_TAMPER_SYSCALL_TABLE
+
+      - name: Configure ReSukiSU
+        if: ${{ inputs.ROOT_MANAGER == 'resukisu' }}
+        working-directory: kernel
+        run: |
+          scripts/config --file "$BUILD_DIR/.config" \
+             --enable CONFIG_KSU
+
+          scripts/config --file "$BUILD_DIR/.config" \
+             --enable CONFIG_KSU_TAMPER_SYSCALL_TABLE
 
       # APatch
       - name: Configure APatch
