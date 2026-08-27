@@ -1,665 +1,296 @@
-name: Build Whyred Kernel - OldCam + NewCam
+name: Build Whyred Kernel
 
 on:
   workflow_dispatch:
     inputs:
-
-      kernel_name:
-        description: 'Custom Kernel Name'
-        required: false
-        default: '-WhyredKernel-v1.0'
-        type: string
-
-      kernel_hostname:
-        description: 'Kernel Hostname'
+      branch:
+        description: "Kernel branch"
         required: true
-        default: 'xiaomi@redmi'
+        default: "kernel-hmp"
         type: string
 
-      build_username:
-        description: 'Build Username'
+      clean_build:
+        description: "Clean build"
         required: true
-        default: 'xiaomi'
-        type: string
-
-      build_hostname:
-        description: 'Build Hostname'
-        required: true
-        default: 'redmi'
-        type: string
-
+        default: true
+        type: boolean
 
 jobs:
-
   build:
-    name: Build Redmi Note 5 Pro Whyred - OldCam + NewCam
+    name: Build Whyred
     runs-on: ubuntu-22.04
+
+    env:
+      KERNEL_REPO: https://github.com/radcolor/android_kernel_xiaomi_whyred.git
+      KERNEL_BRANCH: ${{ inputs.branch }}
+
+      ARCH: arm64
+      SUBARCH: arm64
+
+      DEFCONFIG: whyred_defconfig
+
+      BUILD_DIR: ${{ github.workspace }}/out
+      ANYKERNEL_DIR: ${{ github.workspace }}/AnyKernel3
+
+      # Fix for __aarch64_cas4_rel / outline atomics
+      KCFLAGS: -mno-outline-atomics
 
     steps:
 
-      # ==========================================
-      # 1. Checkout kernel source
-      # ==========================================
-      - name: Checkout Whyred Kernel
+      # ============================================================
+      # CHECKOUT KERNEL
+      # ============================================================
+      - name: Checkout Kernel
         uses: actions/checkout@v4
         with:
           repository: radcolor/android_kernel_xiaomi_whyred
-          ref: kernel-hmp
+          ref: ${{ inputs.branch }}
           fetch-depth: 1
+          path: kernel
 
-
-      # ==========================================
-      # 2. Cache GCC AArch64
-      # ==========================================
-      - name: Cache AArch64 Toolchain
-        id: gcc-cache
-        uses: actions/cache@v4
-        with:
-          path: gcc-aarch64
-          key: whyred-gcc-aarch64-v1
-
-
-      # ==========================================
-      # 3. Download GCC if cache empty
-      # ==========================================
-      - name: Download GCC 10.1 Toolchain
-        if: steps.gcc-cache.outputs.cache-hit != 'true'
-        run: |
-          git clone \
-            --depth=1 \
-            https://github.com/theradcolor/aarch64-linux-gnu.git \
-            gcc-aarch64
-
-
-      # ==========================================
-      # 4. Cache ccache
-      # ==========================================
-      - name: Cache ccache
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/ccache
-          key: whyred-ccache-${{ github.ref_name }}
-          restore-keys: |
-            whyred-ccache-
-
-
-      # ==========================================
-      # 5. Install dependencies
-      # ==========================================
+      # ============================================================
+      # DEPENDENCIES
+      # ============================================================
       - name: Install dependencies
         run: |
           sudo apt-get update
 
-          sudo apt-get install -y --no-install-recommends \
+          sudo apt-get install -y \
             bc \
             bison \
             build-essential \
             ccache \
+            curl \
             flex \
+            git \
             libelf-dev \
+            libncurses5-dev \
             libncurses-dev \
             libssl-dev \
-            cpio \
+            python3 \
             zip \
             unzip \
-            gcc-11 \
-            g++-11 \
-            gcc-arm-linux-gnueabi \
-            g++-arm-linux-gnueabi
+            wget \
+            xz-utils \
+            gcc-aarch64-linux-gnu \
+            binutils-aarch64-linux-gnu
 
-
-      # ==========================================
-      # 6. Setup build environment
-      # ==========================================
-      - name: Setup build environment
-        shell: bash
+      # ============================================================
+      # CCACHE
+      # ============================================================
+      - name: Setup ccache
         run: |
+          echo "CCACHE_DIR=$HOME/.ccache" >> $GITHUB_ENV
 
-          echo "Searching AArch64 compiler..."
+          mkdir -p "$HOME/.ccache"
 
-          AARCH64_GCC=$(find "$GITHUB_WORKSPACE/gcc-aarch64" \
-            -type f \
-            -name 'aarch64-linux-gnu-gcc' \
-            | head -1)
-
-          if [ -z "$AARCH64_GCC" ]; then
-            echo "ERROR: AArch64 GCC tidak ditemukan!"
-            exit 1
-          fi
-
-          AARCH64_BIN=$(dirname "$AARCH64_GCC")
-
-          echo "AARCH64_BIN=$AARCH64_BIN" >> "$GITHUB_ENV"
-          echo "CROSS_COMPILE=$AARCH64_BIN/aarch64-linux-gnu-" >> "$GITHUB_ENV"
-          echo "CROSS_COMPILE_ARM32=/usr/bin/arm-linux-gnueabi-" >> "$GITHUB_ENV"
-
-          echo "ARCH=arm64" >> "$GITHUB_ENV"
-          echo "SUBARCH=arm64" >> "$GITHUB_ENV"
-
-          echo "PATH=$AARCH64_BIN:$PATH" >> "$GITHUB_ENV"
-
-          echo "CCACHE_DIR=$HOME/.cache/ccache" >> "$GITHUB_ENV"
-
-          echo "================================"
-          echo "AARCH64 BIN:"
-          echo "$AARCH64_BIN"
-          echo "================================"
-
-
-      # ==========================================
-      # 7. Configure ccache
-      # ==========================================
-      - name: Configure ccache
-        run: |
-          mkdir -p "$HOME/.cache/ccache"
-
-          ccache --set-config=max_size=2G
+          ccache --set-config=max_size=5G
           ccache --set-config=compression=true
 
-          ccache -z
+          echo "CCACHE_DIR=$HOME/.ccache" >> $GITHUB_ENV
 
-          echo "ccache configured:"
-          ccache -p
+      - name: Restore ccache
+        uses: actions/cache@v4
+        with:
+          path: ~/.ccache
+          key: whyred-kernel-ccache-${{ runner.os }}-${{ github.ref_name }}
+          restore-keys: |
+            whyred-kernel-ccache-${{ runner.os }}-
 
-
-      # ==========================================
-      # 8. Check compilers
-      # ==========================================
-      - name: Check compilers
+      # ============================================================
+      # TOOLCHAIN
+      # ============================================================
+      - name: Setup AArch64 GCC
         run: |
+          echo "Using system AArch64 GCC"
 
-          echo "================================"
-          echo "HOST GCC"
-          echo "================================"
+          aarch64-linux-gnu-gcc --version
 
-          gcc-11 --version
+          echo "CROSS_COMPILE=aarch64-linux-gnu-" >> $GITHUB_ENV
+
+      # ============================================================
+      # CLEAN
+      # ============================================================
+      - name: Clean build
+        if: ${{ inputs.clean_build }}
+        working-directory: kernel
+        run: |
+          rm -rf "$BUILD_DIR"
+
+      # ============================================================
+      # VERIFY DEFCONFIG
+      # ============================================================
+      - name: Check defconfig
+        working-directory: kernel
+        run: |
+          test -f arch/arm64/configs/${DEFCONFIG}
+
+          echo "======================================"
+          echo "DEFCONFIG FOUND:"
+          echo "arch/arm64/configs/${DEFCONFIG}"
+          echo "======================================"
+
+      # ============================================================
+      # CONFIGURE
+      # ============================================================
+      - name: Configure kernel
+        working-directory: kernel
+        run: |
+          mkdir -p "$BUILD_DIR"
+
+          make O="$BUILD_DIR" \
+            ARCH="$ARCH" \
+            SUBARCH="$SUBARCH" \
+            CROSS_COMPILE="$CROSS_COMPILE" \
+            "$DEFCONFIG"
 
           echo ""
-          echo "================================"
-          echo "AARCH64 GCC"
-          echo "================================"
+          echo "Kernel configuration:"
+          echo "--------------------------------------"
 
-          "$CROSS_COMPILE"gcc --version
+          grep -E \
+            'CONFIG_ARCH_SDM660|CONFIG_ARCH_QCOM|CONFIG_PREEMPT|CONFIG_CC_STACKPROTECTOR' \
+            "$BUILD_DIR/.config" || true
 
-          echo ""
-          echo "================================"
-          echo "ARM32 GCC"
-          echo "================================"
+          echo "--------------------------------------"
 
-          "$CROSS_COMPILE_ARM32"gcc --version
-
-
-      # ==========================================
-      # 9. Clean kernel source
-      # ==========================================
-      - name: Clean Kernel Source
+      # ============================================================
+      # APPLY SAFE COMPILER FLAGS
+      # ============================================================
+      - name: Apply compiler flags
+        working-directory: kernel
         run: |
-          rm -rf out-oldcam
-          rm -rf out-newcam
-          rm -rf kernel-output
+          echo "KCFLAGS=$KCFLAGS"
 
-          make mrproper
+          export KCFLAGS="$KCFLAGS"
 
-          mkdir -p out-oldcam
-          mkdir -p out-newcam
+      # ============================================================
+      # BUILD KERNEL
+      # ============================================================
+      - name: Build kernel
+        working-directory: kernel
+        run: |
+          export PATH="/usr/lib/ccache:$PATH"
+
+          export ARCH=arm64
+          export SUBARCH=arm64
+          export CROSS_COMPILE=aarch64-linux-gnu-
+
+          export KCFLAGS="-mno-outline-atomics"
+
+          echo "======================================"
+          echo "BUILDING WHYRED KERNEL"
+          echo "======================================"
+
+          make -j"$(nproc)" \
+            O="$BUILD_DIR" \
+            ARCH=arm64 \
+            SUBARCH=arm64 \
+            CROSS_COMPILE="$CROSS_COMPILE" \
+            KCFLAGS="$KCFLAGS" \
+            V=1
+
+      # ============================================================
+      # CHECK OUTPUT
+      # ============================================================
+      - name: Check kernel image
+        run: |
+          echo "======================================"
+          echo "CHECKING KERNEL OUTPUT"
+          echo "======================================"
+
+          ls -lh "$BUILD_DIR/arch/arm64/boot/" || true
+
+          test -f "$BUILD_DIR/arch/arm64/boot/Image"
+
+          if [ -f "$BUILD_DIR/arch/arm64/boot/Image.gz-dtb" ]; then
+            echo "Image.gz-dtb FOUND"
+          elif [ -f "$BUILD_DIR/arch/arm64/boot/Image.gz" ]; then
+            echo "Image.gz FOUND"
+          fi
+
+      # ============================================================
+      # COPY KERNEL
+      # ============================================================
+      - name: Prepare kernel image
+        run: |
           mkdir -p kernel-output
 
+          if [ -f "$BUILD_DIR/arch/arm64/boot/Image.gz-dtb" ]; then
+            cp "$BUILD_DIR/arch/arm64/boot/Image.gz-dtb" \
+              kernel-output/Image.gz-dtb
 
-      # ==========================================
-      # 10. Build OLD CAM
-      # ==========================================
-      - name: Configure OldCam
+          elif [ -f "$BUILD_DIR/arch/arm64/boot/Image.gz" ]; then
+            cp "$BUILD_DIR/arch/arm64/boot/Image.gz" \
+              kernel-output/Image.gz
+
+          else
+            cp "$BUILD_DIR/arch/arm64/boot/Image" \
+              kernel-output/Image
+          fi
+
+          cp "$BUILD_DIR/.config" \
+            kernel-output/kernel.config
+
+          ls -lh kernel-output
+
+      # ============================================================
+      # CLONE ANYKERNEL3
+      # ============================================================
+      - name: Clone AnyKernel3
         run: |
+          git clone --depth=1 \
+            https://github.com/d1aznr/AnyKernel3.git \
+            -b whyred \
+            "$ANYKERNEL_DIR"
 
-          export HOSTCC=/usr/bin/gcc-11
-          export HOSTCXX=/usr/bin/g++-11
-
-          curl -LSs "https://raw.githubusercontent.com/backslashxx/KernelSU/master/kernel/setup.sh" | bash -
-
-          echo "================================"
-          echo "CONFIGURING OLDCAM"
-          echo "================================"
-
-          make O=out-oldcam \
-            ARCH=arm64 \
-            CROSS_COMPILE="$CROSS_COMPILE" \
-            CROSS_COMPILE_ARM32="$CROSS_COMPILE_ARM32" \
-            HOSTCC="$HOSTCC" \
-            HOSTCXX="$HOSTCXX" \
-            whyred_defconfig
-            CONFIG_KSU=y
-            CONFIG_KSU_TAMPER_SYSCALL_TABLE=y
-
-
-      # ==========================================
-      # 11. Set OldCam custom info
-      # ==========================================
-      - name: Set OldCam Custom Info
+      # ============================================================
+      # PACKAGE ANYKERNEL3
+      # ============================================================
+      - name: Package flashable ZIP
         run: |
+          set -e
 
-          scripts/config --file out-oldcam/.config \
-            --set-str CONFIG_LOCALVERSION "${{ inputs.kernel_name }}-OldCam"
+          cd "$ANYKERNEL_DIR"
 
-          echo "OldCam configuration:"
-          grep -E \
-            'CONFIG_LOCALVERSION|CONFIG_XIAOMI_NEW_CAMERA_BLOBS|CONFIG_MSM_CAMERA_SENSOR' \
-            out-oldcam/.config
+          rm -f Image
+          rm -f Image.gz
+          rm -f Image.gz-dtb
 
+          if [ -f "$GITHUB_WORKSPACE/kernel-output/Image.gz-dtb" ]; then
+            cp "$GITHUB_WORKSPACE/kernel-output/Image.gz-dtb" .
+          elif [ -f "$GITHUB_WORKSPACE/kernel-output/Image.gz" ]; then
+            cp "$GITHUB_WORKSPACE/kernel-output/Image.gz" .
+          else
+            cp "$GITHUB_WORKSPACE/kernel-output/Image" .
+          fi
 
-      # ==========================================
-      # 12. Build OLD CAM
-      # ==========================================
-      - name: Build OldCam
-        run: |
+          zip -r9 \
+            "$GITHUB_WORKSPACE/Whyred-Kernel-${GITHUB_RUN_NUMBER}.zip" \
+            . \
+            -x ".git/*"
 
-          export HOSTCC=/usr/bin/gcc-11
-          export HOSTCXX=/usr/bin/g++-11
-
-          echo "================================"
-          echo "BUILDING WHYRED OLDCAM"
-          echo "================================"
-
-          echo "CPU:"
-          nproc
-
-          echo ""
-          echo "Camera configuration:"
-
-          grep -E \
-            'CONFIG_XIAOMI_NEW_CAMERA_BLOBS|CONFIG_MSM_CAMERA_SENSOR' \
-            out-oldcam/.config
-
-          echo ""
-          echo "Starting OldCam build..."
-
-          time make -j"$(nproc)" \
-            O=out-oldcam \
-            ARCH=arm64 \
-            CROSS_COMPILE="$CROSS_COMPILE" \
-            CROSS_COMPILE_ARM32="$CROSS_COMPILE_ARM32" \
-            HOSTCC="$HOSTCC" \
-            HOSTCXX="$HOSTCXX" \
-            Image.gz-dtb
-
-
-      # ==========================================
-      # 13. Check OLD CAM
-      # ==========================================
-      - name: Check OldCam
-        run: |
-
-          echo "================================"
-          echo "CHECKING OLDCAM"
-          echo "================================"
-
-          ls -lah out-oldcam/arch/arm64/boot/
-
-          test -f out-oldcam/arch/arm64/boot/Image.gz-dtb
-
-          echo ""
-          echo "OldCam build successful!"
-
-          ls -lh \
-            out-oldcam/arch/arm64/boot/Image.gz-dtb
-
-
-      # ==========================================
-      # 14. Package OLD CAM
-      # ==========================================
-      - name: Package OldCam
-        run: |
-
-          mkdir -p kernel-output/OldCam
-
-          cp \
-            out-oldcam/arch/arm64/boot/Image.gz-dtb \
-            kernel-output/OldCam/Image.gz-dtb
-
-          cp \
-            out-oldcam/.config \
-            kernel-output/OldCam/whyred-oldcam-config
-
-          cd kernel-output/OldCam
-
-          zip -9 \
-            ../../Whyred-OldCam.zip \
-            Image.gz-dtb \
-            whyred-oldcam-config
-
-
-      # ==========================================
-      # 15. Build NEW CAM
-      # ==========================================
-      - name: Configure NewCam
-        run: |
-
-          export HOSTCC=/usr/bin/gcc-11
-          export HOSTCXX=/usr/bin/g++-11
-
-          echo "================================"
-          echo "CONFIGURING NEWCAM"
-          echo "================================"
-
-          make O=out-newcam \
-            ARCH=arm64 \
-            CROSS_COMPILE="$CROSS_COMPILE" \
-            CROSS_COMPILE_ARM32="$CROSS_COMPILE_ARM32" \
-            HOSTCC="$HOSTCC" \
-            HOSTCXX="$HOSTCXX" \
-            whyred-newcam_defconfig
-
-
-      # ==========================================
-      # 16. Set NewCam custom info
-      # ==========================================
-      - name: Set NewCam Custom Info
-        run: |
-
-          scripts/config --file out-newcam/.config \
-            --set-str CONFIG_LOCALVERSION "${{ inputs.kernel_name }}-NewCam"
-
-          echo "NewCam configuration:"
-          grep -E \
-            'CONFIG_LOCALVERSION|CONFIG_XIAOMI_NEW_CAMERA_BLOBS|CONFIG_MSM_CAMERA_SENSOR' \
-            out-newcam/.config
-
-
-      # ==========================================
-      # 17. Build NEW CAM
-      # ==========================================
-      - name: Build NewCam
-        run: |
-
-          export HOSTCC=/usr/bin/gcc-11
-          export HOSTCXX=/usr/bin/g++-11
-
-          echo "================================"
-          echo "BUILDING WHYRED NEWCAM"
-          echo "================================"
-
-          echo "CPU:"
-          nproc
-
-          echo ""
-          echo "Camera configuration:"
-
-          grep -E \
-            'CONFIG_XIAOMI_NEW_CAMERA_BLOBS|CONFIG_MSM_CAMERA_SENSOR' \
-            out-newcam/.config
-
-          echo ""
-          echo "Starting NewCam build..."
-
-          time make -j"$(nproc)" \
-            O=out-newcam \
-            ARCH=arm64 \
-            CROSS_COMPILE="$CROSS_COMPILE" \
-            CROSS_COMPILE_ARM32="$CROSS_COMPILE_ARM32" \
-            HOSTCC="$HOSTCC" \
-            HOSTCXX="$HOSTCXX" \
-            Image.gz-dtb
-
-
-      # ==========================================
-      # 18. Check NEW CAM
-      # ==========================================
-      - name: Check NewCam
-        run: |
-
-          echo "================================"
-          echo "CHECKING NEWCAM"
-          echo "================================"
-
-          ls -lah out-newcam/arch/arm64/boot/
-
-          test -f out-newcam/arch/arm64/boot/Image.gz-dtb
-
-          echo ""
-          echo "NewCam build successful!"
-
-          ls -lh \
-            out-newcam/arch/arm64/boot/Image.gz-dtb
-
-
-      # ==========================================
-      # 19. Package NEW CAM
-      # ==========================================
-      - name: Package NewCam
-        run: |
-
-          mkdir -p kernel-output/NewCam
-
-          cp \
-            out-newcam/arch/arm64/boot/Image.gz-dtb \
-            kernel-output/NewCam/Image.gz-dtb
-
-          cp \
-            out-newcam/.config \
-            kernel-output/NewCam/whyred-newcam-config
-
-          cd kernel-output/NewCam
-
-          zip -9 \
-            ../../Whyred-NewCam.zip \
-            Image.gz-dtb \
-            whyred-newcam-config
-
-      # ==========================================
-      # 20. Upload OldCam Artifact
-      # ==========================================
-      - name: Upload OldCam
-        uses: actions/upload-artifact@v4
-        with:
-          name: Whyred-OldCam
-          path: ${{ github.workspace }}/Whyred-OldCam.zip
-          if-no-files-found: error
-
-      # ==========================================
-      # 21. Upload NewCam Artifact
-      # ==========================================
-      - name: Upload NewCam
-        uses: actions/upload-artifact@v4
-        with:
-          name: Whyred-NewCam
-          path: ${{ github.workspace }}/Whyred-NewCam.zip
-          if-no-files-found: error
-
-      # ==========================================
-      # 22. Show ccache statistics
-      # ==========================================
+      # ============================================================
+      # CCACHE STATISTICS
+      # ============================================================
       - name: ccache statistics
         run: |
-          echo "================================"
-          echo "CCACHE STATISTICS"
-          echo "================================"
-          ccache --show-stats || true
+          ccache -s || true
 
-      # ==========================================
-      # 22. Setup AnyKernel3
-      # ==========================================
-      - name: Clone AnyKernel3 Whyred
-        run: |
-          git clone --depth=1 -b whyred https://github.com/d1aznr/AnyKernel3.git anykernel3
-
-      # ==========================================
-      # 23. Prepare OldCam AnyKernel3
-      # ==========================================
-      - name: Package OldCam AnyKernel3
-        run: |
-          rm -rf ak3-oldcam
-          cp -a anykernel3 ak3-oldcam
-
-          rm -rf ak3-oldcam/.git
-          find ak3-oldcam -maxdepth 1 -type f \
-            ! -name anykernel.sh \
-            ! -name META-INF \
-            -delete 2>/dev/null || true
-
-          cp out-oldcam/arch/arm64/boot/Image.gz-dtb \
-            ak3-oldcam/Image.gz-dtb
-
-          cat > ak3-oldcam/anykernel.sh <<'EOF'
-          properties() { '
-          kernel.string=Whyred OldCam Kernel
-          do.devicecheck=1
-          do.modules=0
-          do.systemless=auto
-          do.cleanup=1
-          do.cleanuponabort=0
-          device.name1=whyred
-          device.name2=whyred
-          device.name3=
-          supported.versions=
-          supported.patchlevels=
-          '; }
-
-          BLOCK=auto;
-          IS_SLOT_DEVICE=auto;
-          RAMDISK_COMPRESSION=auto;
-          PATCH_VBMETA_FLAG=auto;
-
-          . tools/ak3-core.sh;
-
-          # Detect the real boot partition automatically on the phone.
-          dump_boot;
-          write_boot;
-          EOF
-
-          test -f ak3-oldcam/Image.gz-dtb
-          test -f ak3-oldcam/anykernel.sh
-
-          cd ak3-oldcam
-          zip -r9 ../Whyred-OldCam-AnyKernel3.zip . \
-            -x "*.git*" "*.github*" "README.md"
-          cd ..
-
-      # ==========================================
-      # 24. Prepare NewCam AnyKernel3
-      # ==========================================
-      - name: Package NewCam AnyKernel3
-        run: |
-          rm -rf ak3-newcam
-          cp -a anykernel3 ak3-newcam
-
-          rm -rf ak3-newcam/.git
-          find ak3-newcam -maxdepth 1 -type f \
-            ! -name anykernel.sh \
-            ! -name META-INF \
-            -delete 2>/dev/null || true
-
-          cp out-newcam/arch/arm64/boot/Image.gz-dtb \
-            ak3-newcam/Image.gz-dtb
-
-          cat > ak3-newcam/anykernel.sh <<'EOF'
-          properties() { '
-          kernel.string=Whyred NewCam Kernel
-          do.devicecheck=1
-          do.modules=0
-          do.systemless=auto
-          do.cleanup=1
-          do.cleanuponabort=0
-          device.name1=whyred
-          device.name2=whyred
-          device.name3=
-          supported.versions=
-          supported.patchlevels=
-          '; }
-
-          BLOCK=auto;
-          IS_SLOT_DEVICE=auto;
-          RAMDISK_COMPRESSION=auto;
-          PATCH_VBMETA_FLAG=auto;
-
-          . tools/ak3-core.sh;
-
-          # Detect the real boot partition automatically on the phone.
-          dump_boot;
-          write_boot;
-          EOF
-
-          test -f ak3-newcam/Image.gz-dtb
-          test -f ak3-newcam/anykernel.sh
-
-          cd ak3-newcam
-          zip -r9 ../Whyred-NewCam-AnyKernel3.zip . \
-            -x "*.git*" "*.github*" "README.md"
-          cd ..
-
-      # ==========================================
-      # 25. Check AnyKernel3 packages
-      # ==========================================
-      - name: Check AnyKernel3 packages
-        run: |
-          echo "================================"
-          echo "ANYKERNEL3 PACKAGES"
-          echo "================================"
-
-          test -f Whyred-OldCam-AnyKernel3.zip
-          test -f Whyred-NewCam-AnyKernel3.zip
-
-          ls -lh \
-            Whyred-OldCam-AnyKernel3.zip \
-            Whyred-NewCam-AnyKernel3.zip
-
-      # ==========================================
-      # 26. Upload OldCam AnyKernel3 Artifact
-      # ==========================================
-      - name: Upload OldCam AnyKernel3
+      # ============================================================
+      # UPLOAD KERNEL
+      # ============================================================
+      - name: Upload kernel image
         uses: actions/upload-artifact@v4
         with:
-          name: Whyred-OldCam-AnyKernel3
-          path: ${{ github.workspace }}/Whyred-OldCam-AnyKernel3.zip
-          if-no-files-found: error
+          name: Whyred-Kernel-Image
+          path: kernel-output/
 
-      # ==========================================
-      # 27. Upload NewCam AnyKernel3 Artifact
-      # ==========================================
-      - name: Upload NewCam AnyKernel3
+      # ============================================================
+      # UPLOAD FLASHABLE ZIP
+      # ============================================================
+      - name: Upload AnyKernel3 ZIP
         uses: actions/upload-artifact@v4
         with:
-          name: Whyred-NewCam-AnyKernel3
-          path: ${{ github.workspace }}/Whyred-NewCam-AnyKernel3.zip
-          if-no-files-found: error
-
-      # ==========================================
-      # 28. Send OldCam to Telegram
-      # ==========================================
-      - name: Send OldCam AnyKernel3 to Telegram
-        env:
-          TELEGRAM_BOT_TOKEN: 8682572622:AAGPUcexPtSXnPR8w6yPZdLg6m0nsnYLu2g
-          TELEGRAM_CHAT_ID: 8383391152
-        run: |
-          curl -fsS \
-            -X POST \
-            "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendDocument" \
-            -F "chat_id=${TELEGRAM_CHAT_ID}" \
-            -F "document=@Whyred-OldCam-AnyKernel3.zip" \
-            -F "caption=Whyred OldCam Kernel - AnyKernel3"
-
-      # ==========================================
-      # 29. Send NewCam to Telegram
-      # ==========================================
-      - name: Send NewCam AnyKernel3 to Telegram
-        env:
-          TELEGRAM_BOT_TOKEN: 8682572622:AAGPUcexPtSXnPR8w6yPZdLg6m0nsnYLu2g
-          TELEGRAM_CHAT_ID: 8383391152
-        run: |
-          curl -fsS \
-            -X POST \
-            "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendDocument" \
-            -F "chat_id=${TELEGRAM_CHAT_ID}" \
-            -F "document=@Whyred-NewCam-AnyKernel3.zip" \
-            -F "caption=Whyred NewCam Kernel - AnyKernel3"
-
-      # ==========================================
-      # 30. Final ccache statistics
-      # ==========================================
-      - name: ccache statistics
-        if: always()
-        run: |
-          echo "================================"
-          echo "CCACHE STATISTICS"
-          echo "================================"
-          ccache --show-stats || true
-
-
+          name: Whyred-Kernel-AnyKernel3
+          path: Whyred-Kernel-*.zip
