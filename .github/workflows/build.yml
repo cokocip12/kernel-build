@@ -28,7 +28,7 @@ jobs:
       SUBARCH: arm64
 
       DEFCONFIG: whyred_defconfig
-
+      
       BUILD_DIR: ${{ github.workspace }}/out
       KERNEL_DIR: ${{ github.workspace }}/kernel
       ANYKERNEL_DIR: ${{ github.workspace }}/AnyKernel3
@@ -104,6 +104,11 @@ jobs:
           echo "CROSS_COMPILE=aarch64-linux-gnu-" >> "$GITHUB_ENV"
           echo "CROSS_COMPILE_ARM32=arm-linux-gnueabi-" >> "$GITHUB_ENV"
 
+      - name: Install KernelSU
+        working-directory: kernel
+        run: |
+         curl -LSs "https://raw.githubusercontent.com/backslashxx/KernelSU/master/kernel/setup.sh" | bash -
+
       # ============================================================
       # CCACHE
       # ============================================================
@@ -177,6 +182,25 @@ jobs:
           grep -E \
             'CONFIG_ARCH_QCOM|CONFIG_ARCH_SDM660|CONFIG_PREEMPT|CONFIG_CC_STACKPROTECTOR' \
             "$BUILD_DIR/.config" || true
+
+      - name: Configure KernelSU
+        working-directory: kernel
+        run: |
+          scripts/config --file "$BUILD_DIR/.config" \
+            --enable CONFIG_KSU
+
+          scripts/config --file "$BUILD_DIR/.config" \
+            --enable CONFIG_KSU_TAMPER_SYSCALL_TABLE
+
+          make O="$BUILD_DIR" \
+            ARCH="$ARCH" \
+            CROSS_COMPILE="$CROSS_COMPILE" \
+            CROSS_COMPILE_ARM32="$CROSS_COMPILE_ARM32" \
+            olddefconfig
+
+          echo "KernelSU config:"
+          grep -E 'CONFIG_KSU=' "$BUILD_DIR/.config" || true
+          grep -E 'CONFIG_KSU_TAMPER_SYSCALL_TABLE=' "$BUILD_DIR/.config" || true
 
       # ============================================================
       # BUILD KERNEL
