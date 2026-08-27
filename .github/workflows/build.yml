@@ -203,6 +203,27 @@ jobs:
             'CONFIG_ARCH_QCOM|CONFIG_ARCH_SDM660|CONFIG_PREEMPT|CONFIG_CC_STACKPROTECTOR' \
             "$BUILD_DIR/.config" || true
 
+      - name: Configure KALLSYMS for APatch
+        if: ${{ inputs.ROOT_MANAGER == 'apatch' }}
+        working-directory: kernel
+        run: |
+         echo "Configuring KALLSYMS..."
+
+         scripts/config --file "$BUILD_DIR/.config" \
+         --enable CONFIG_KALLSYMS
+
+         scripts/config --file "$BUILD_DIR/.config" \
+         --enable CONFIG_KALLSYMS_ALL
+ 
+         make O="$BUILD_DIR" \
+         ARCH="$ARCH" \
+         CROSS_COMPILE="$CROSS_COMPILE" \
+         CROSS_COMPILE_ARM32="$CROSS_COMPILE_ARM32" \
+         olddefconfig
+
+         echo "=== KALLSYMS CONFIG ==="
+         grep -E '^CONFIG_KALLSYMS(=|_)' "$BUILD_DIR/.config" || true
+
       - name: Configure KernelSU
         if: ${{ inputs.ROOT_MANAGER == 'kernelsu' }}
         working-directory: kernel
