@@ -229,6 +229,19 @@ jobs:
             'CONFIG_ARCH_QCOM|CONFIG_ARCH_SDM660|CONFIG_PREEMPT|CONFIG_CC_STACKPROTECTOR' \
             "$BUILD_DIR/.config" || true
 
+      - name: Enable ZRAM
+        run: |
+         scripts/config --file out/.config \
+            --enable CONFIG_ZRAM
+
+         scripts/config --file out/.config \
+            --enable CONFIG_ZSMALLOC
+
+         make O=out ARCH=arm64 olddefconfig
+
+         echo "=== ZRAM CONFIG ==="
+         grep -E '^CONFIG_ZRAM=|^CONFIG_ZSMALLOC=' out/.config || true
+
       - name: Configure KALLSYMS for APatch
         if: ${{ inputs.ROOT_MANAGER == 'apatch' }}
         working-directory: kernel
@@ -440,6 +453,51 @@ jobs:
             -b whyred \
             https://github.com/d1aznr/AnyKernel3.git \
             "$ANYKERNEL_DIR"
+
+      - name: Add Automatic ZRAM
+        run: |
+          mkdir -p AnyKernel3/tools
+
+          cat > AnyKernel3/tools/zram-auto.sh <<'EOF'
+          #!/system/bin/sh
+
+          ZRAM="/sys/block/zram0"
+
+          [ -d "$ZRAM" ] || exit 0
+
+          RAM_MB=$(awk '/MemTotal/ {print int($2/1024)}' /proc/meminfo)
+
+          if [ "$RAM_MB" -lt 3584 ]; then
+              SIZE_MB=2048
+          elif [ "$RAM_MB" -lt 5120 ]; then
+              SIZE_MB=2048
+          elif [ "$RAM_MB" -lt 7168 ]; then
+              SIZE_MB=3072
+          elif [ "$RAM_MB" -lt 10240 ]; then
+              SIZE_MB=4096
+          else
+              SIZE_MB=6144
+          fi
+
+          # Reset ZRAM
+          echo 1 > "$ZRAM/reset" 2>/dev/null
+
+          # Pilih LZ4 jika kernel menyediakan
+          if [ -f "$ZRAM/comp_algorithm" ]; then
+              grep -qw lz4 "$ZRAM/comp_algorithm" && \
+                  echo lz4 > "$ZRAM/comp_algorithm"
+          fi
+
+          # Set ukuran
+          echo "${SIZE_MB}M" > "$ZRAM/disksize"
+
+          # Aktifkan swap
+          mkswap "$ZRAM/dev" >/dev/null 2>&1
+          swapon "$ZRAM/dev" -p 32758 >/dev/null 2>&1
+
+          EOF
+
+          chmod 755 AnyKernel3/tools/zram-auto.sh
 
       # ============================================================
       # PACKAGE ANYKERNEL3
