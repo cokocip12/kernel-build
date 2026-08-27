@@ -541,75 +541,75 @@ jobs:
           mkdir -p "$ANYKERNEL_DIR/ramdisk/sbin"
 
           cat > "$ZRAM_SCRIPT" <<'EOF'
-         #!/system/bin/sh
+          #!/system/bin/sh
 
-        ZRAM="/sys/block/zram0"
+          ZRAM="/sys/block/zram0"
 
-        # Wait for zram device
-         i=0
-         while [ "$i" -lt 10 ]; do
-         [ -d "$ZRAM" ] && break
-         sleep 1
-         i=$((i + 1))
-         done
+          # Wait for zram device
+          i=0
+          while [ "$i" -lt 10 ]; do
+          [ -d "$ZRAM" ] && break
+          sleep 1
+          i=$((i + 1))
+          done
 
-       # Exit if zram does not exist
-       [ -d "$ZRAM" ] || exit 0
+          # Exit if zram does not exist
+          [ -d "$ZRAM" ] || exit 0
 
-       # Detect RAM in MB
-       RAM_MB=$(awk '/MemTotal/ {print int($2 / 1024)}' /proc/meminfo)
+          # Detect RAM in MB
+          RAM_MB=$(awk '/MemTotal/ {print int($2 / 1024)}' /proc/meminfo)
 
-       # Select zram size
-       case "$RAM_MB" in
-    ''|*[!0-9]*)
-        SIZE_MB=2048
-        ;;
-    0|1|2|3*)
-        SIZE_MB=2048
-        ;;
-    4*)
-        SIZE_MB=2048
-        ;;
-    5*)
-        SIZE_MB=3072
-        ;;
-    6*)
-        SIZE_MB=3072
-        ;;
-    7*|8*|9*)
-        SIZE_MB=4096
-        ;;
-    *)
-        SIZE_MB=6144
-        ;;
-esac
+          # Select zram size
+          case "$RAM_MB" in
+              ''|*[!0-9]*)
+              SIZE_MB=2048
+              ;;
+          0|1|2|3*)
+          SIZE_MB=2048
+              ;;
+          4*)
+          SIZE_MB=2048
+              ;;
+          5*)
+          SIZE_MB=3072
+              ;;
+          6*)
+          SIZE_MB=3072
+              ;;
+          7*|8*|9*)
+          SIZE_MB=4096
+              ;;
+          *)
+          SIZE_MB=6144
+              ;;
+          esac
+ 
+          # Disable old swap
+          swapoff "$ZRAM/dev" 2>/dev/null || true
 
-# Disable old swap
-swapoff "$ZRAM/dev" 2>/dev/null || true
+          # Reset zram
+          echo 1 > "$ZRAM/reset" 2>/dev/null || true
 
-# Reset zram
-echo 1 > "$ZRAM/reset" 2>/dev/null || true
+          # Select LZ4HC when available
+          if [ -f "$ZRAM/comp_algorithm" ]; then
+          if grep -qw "lz4hc" "$ZRAM/comp_algorithm"; then
+          echo lz4hc > "$ZRAM/comp_algorithm"
+          elif grep -qw "lz4" "$ZRAM/comp_algorithm"; then
+          echo lz4 > "$ZRAM/comp_algorithm"
+          fi
+          fi
 
-# Select LZ4HC when available
-if [ -f "$ZRAM/comp_algorithm" ]; then
-    if grep -qw "lz4hc" "$ZRAM/comp_algorithm"; then
-        echo lz4hc > "$ZRAM/comp_algorithm"
-    elif grep -qw "lz4" "$ZRAM/comp_algorithm"; then
-        echo lz4 > "$ZRAM/comp_algorithm"
-    fi
-fi
+          # Set zram size
+          echo "${SIZE_MB}M" > "$ZRAM/disksize" 2>/dev/null || exit 0
+ 
+          # Create swap
+          mkswap "$ZRAM/dev" >/dev/null 2>&1 || exit 0
+ 
+          # Enable swap
+          swapon "$ZRAM/dev" -p 32758 >/dev/null 2>&1 || exit 0
 
-# Set zram size
-echo "${SIZE_MB}M" > "$ZRAM/disksize" 2>/dev/null || exit 0
-
-# Create swap
-mkswap "$ZRAM/dev" >/dev/null 2>&1 || exit 0
-
-# Enable swap
-swapon "$ZRAM/dev" -p 32758 >/dev/null 2>&1 || exit 0
-
-exit 0
-EOF
+          exit 0
+          EOF
 
           chmod 0755 "$ZRAM_SCRIPT"
 
