@@ -98,10 +98,13 @@ on:
           - off
         
       ZRAM:
-        description: "Enable Automatic ZRAM"
+        description: "Enable automatic ZRAM"
         required: true
-        default: true
-        type: boolean
+        default: "ON"
+        type: choice
+        options:
+          - ON
+          - OFF
 
       ROOT_MANAGER:
         description: "Pilih Root Manager"
@@ -1048,150 +1051,141 @@ jobs:
             "$ANYKERNEL_DIR/Image" \
             "$ANYKERNEL_DIR/Image.lz4" 2>/dev/null || true
 
-      # ============================================================
-      # ============================================================
-      # AUTOMATIC ZRAM
-      # ============================================================
-      - name: Add Automatic ZRAM
-        if: ${{ inputs.ZRAM }}
+      # ==========================================
+      # ZRAM ON/OFF
+      # ==========================================
+      - name: Configure ZRAM
+        shell: bash
+        env:
+          ZRAM_MODE: ${{ inputs.ZRAM }}
         run: |
           set -e
 
-          RAMDISK="$ANYKERNEL_DIR/ramdisk"
+          echo "========================================"
+          echo "        SPECTRA ZRAM CONFIG"
+          echo "========================================"
+          echo "Mode: $ZRAM_MODE"
+          echo "========================================"
 
-          mkdir -p "$RAMDISK/sbin"
+          mkdir -p AnyKernel3/zram
 
-          # --------------------------------------------------------
-          # ZRAM SCRIPT
-          # --------------------------------------------------------
-          cat > "$RAMDISK/sbin/zram-auto.sh" <<'EOF'
+          if [ "$ZRAM_MODE" = "ON" ]; then
+
+            echo "Automatic ZRAM: ENABLED"
+
+            cat > AnyKernel3/zram/zram-auto.sh <<'EOF'
           #!/system/bin/sh
 
           ZRAM="/sys/block/zram0"
 
-          echo "[ZRAM] Starting automatic ZRAM..." > /dev/kmsg
+          # ZRAM harus tersedia
+          [ -d "$ZRAM" ] || exit 0
 
-          # Wait for zram device
-          i=0
-          while [ "$i" -lt 30 ]; do
-              [ -d "$ZRAM" ] && break
-              sleep 1
-              i=$((i + 1))
-          done
+          # Ambil RAM dalam MB
+          RAM_MB=$(awk '/MemTotal/ {print int($2/1024)}' /proc/meminfo)
 
-          if [ ! -d "$ZRAM" ]; then
-              echo "[ZRAM] zram0 not found" > /dev/kmsg
-              exit 0
+          # ==========================================
+          # SPECTRA ZRAM PROFILE
+          # ==========================================
+
+          if [ "$RAM_MB" -le 3584 ]; then
+              # 3 GB RAM
+              ZRAM_MB=2048
+
+          elif [ "$RAM_MB" -le 5120 ]; then
+              # 4 GB RAM
+              ZRAM_MB=2048
+
+          elif [ "$RAM_MB" -le 7168 ]; then
+              # 6 GB RAM
+              ZRAM_MB=3072
+
+          else
+              # 8 GB+
+              ZRAM_MB=4096
           fi
 
-          # Detect RAM
-          RAM_MB=$(awk '/MemTotal/ {print int($2 / 1024)}' /proc/meminfo)
+          ZRAM_SIZE=$((ZRAM_MB * 1024 * 1024))
 
-          case "$RAM_MB" in
-              ''|*[!0-9]*)
-                  SIZE_MB=2048
-                  ;;
-              0|1|2|3*)
-                  SIZE_MB=2048
-                  ;;
-              4*)
-                  SIZE_MB=2048
-                  ;;
-              5*|6*)
-                  SIZE_MB=3072
-                  ;;
-              7*|8*|9*)
-                  SIZE_MB=4096
-                  ;;
-              *)
-                  SIZE_MB=6144
-                  ;;
-          esac
+          # Stop existing swap
+          swapoff "$ZRAM" 2>/dev/null || true
 
-          # Disable old swap
-          swapoff "$ZRAM/dev" 2>/dev/null || true
-
-          # Reset
+          # Reset ZRAM
           echo 1 > "$ZRAM/reset" 2>/dev/null || true
 
-          # Select compression
-          if [ -f "$ZRAM/comp_algorithm" ]; then
-              if grep -qw lz4hc "$ZRAM/comp_algorithm"; then
-                  echo lz4hc > "$ZRAM/comp_algorithm"
-              elif grep -qw lz4 "$ZRAM/comp_algorithm"; then
-                  echo lz4 > "$ZRAM/comp_algorithm"
-              elif grep -qw lzo "$ZRAM/comp_algorithm"; then
-                  echo lzo > "$ZRAM/comp_algorithm"
-              fi
-          fi
+          # Set ZRAM size
+          echo "$ZRAM_SIZE" > "$ZRAM/disksize" || exit 1
 
-          # Set size
-          echo "${SIZE_MB}M" > "$ZRAM/disksize" || {
-              echo "[ZRAM] Failed to set disksize" > /dev/kmsg
-              exit 0
-          }
-
-          # Create swap
-          mkswap "$ZRAM/dev" >/dev/null 2>&1 || {
-              echo "[ZRAM] mkswap failed" > /dev/kmsg
-              exit 0
-          }
+          # Initialize swap
+          mkswap "$ZRAM" >/dev/null 2>&1 || exit 1
 
           # Enable swap
-          swapon "$ZRAM/dev" -p 32758 >/dev/null 2>&1 || {
-              echo "[ZRAM] swapon failed" > /dev/kmsg
-              exit 0
-          }
-
-          echo "[ZRAM] Enabled ${SIZE_MB}MB" > /dev/kmsg
-
-          if [ -f "$ZRAM/comp_algorithm" ]; then
-              echo "[ZRAM] Algorithm: $(cat "$ZRAM/comp_algorithm")" > /dev/kmsg
-          fi
+          swapon -p 32758 "$ZRAM" || exit 1
 
           exit 0
           EOF
 
-          chmod 0755 "$RAMDISK/sbin/zram-auto.sh"
+            chmod 755 AnyKernel3/zram/zram-auto.sh
 
-          # --------------------------------------------------------
-          # INIT SERVICE
-          # --------------------------------------------------------
-          cat > "$RAMDISK/init.zram.rc" <<'EOF'
-          on late-fs
-              start zram_auto
+            # --------------------------------------
+            # Create boot service
+            # --------------------------------------
 
-          service zram_auto /sbin/zram-auto.sh
-              class late_start
-              user root
-              group root
-              oneshot
-              disabled
+            cat > AnyKernel3/zram/service.sh <<'EOF'
+          #!/system/bin/sh
+
+          SCRIPT="/data/adb/spectra-zram/zram-auto.sh"
+
+          if [ -f "$SCRIPT" ]; then
+              sh "$SCRIPT"
+          fi
           EOF
 
-          # --------------------------------------------------------
-          # IMPORT ZRAM INIT
-          # --------------------------------------------------------
-          if [ -f "$RAMDISK/init.rc" ]; then
-              if ! grep -q "init.zram.rc" "$RAMDISK/init.rc"; then
-                  echo "" >> "$RAMDISK/init.rc"
-                  echo "import /init.zram.rc" >> "$RAMDISK/init.rc"
-              fi
+            chmod 755 AnyKernel3/zram/service.sh
+
+            echo "ZRAM configuration created."
+
           else
-              echo "WARNING: ramdisk/init.rc tidak ditemukan"
+
+            echo "Automatic ZRAM: DISABLED"
+
+            rm -rf AnyKernel3/zram
+
           fi
 
-          echo "======================================"
-          echo "AUTOMATIC ZRAM READY"
-          echo "======================================"
+      # ==========================================
+      # CREATE ZRAM INSTALLER
+      # ==========================================
+      - name: Create ZRAM installer
+        env:
+          ZRAM_MODE: ${{ inputs.ZRAM }}
+        run: |
+          set -e
 
-          ls -lh "$RAMDISK/sbin/zram-auto.sh"
-          ls -lh "$RAMDISK/init.zram.rc"
+          if [ "$ZRAM_MODE" = "ON" ]; then
 
-          echo ""
-          echo "ZRAM INIT:"
-          grep -n "init.zram.rc" "$RAMDISK/init.rc" 2>/dev/null || true
+            mkdir -p AnyKernel3/zram-module
 
+            cat > AnyKernel3/zram-module/module.prop <<'EOF'
+          id=spectra-zram
+          name=SPECTRA Automatic ZRAM
+          version=1.0
+          versionCode=1
+          author=RENZVERSE
+          description=Automatic ZRAM profile for Whyred
+          EOF
+
+            mkdir -p AnyKernel3/zram-module/system/bin
+
+            cp \
+              AnyKernel3/zram/zram-auto.sh \
+              AnyKernel3/zram-module/service.sh
+
+            chmod 755 \
+              AnyKernel3/zram-module/service.sh
+
+          fi
+      
       # ============================================================
       # PACKAGE ANYKERNEL3
       # ============================================================
