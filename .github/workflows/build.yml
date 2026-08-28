@@ -145,23 +145,13 @@ jobs:
           set -e
 
           echo "======================================"
-          echo "RADColor GCC LTO: ON"
+          echo "RADCOLOR GCC LTO: ON"
           echo "======================================"
 
-          curl -L \
-            https://raw.githubusercontent.com/radcolor/patches/master/rad-kernel-gcc-lto-patch.patch \
-            -o /tmp/rad-kernel-gcc-lto.patch
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
 
-          git am /tmp/rad-kernel-gcc-lto.patch
-
-          echo "LTO patch applied successfully."
-
-      - name: LTO OFF
-        if: ${{ inputs.LTO == 'off' }}
-        run: |
-          echo "======================================"
-          echo "RADColor GCC LTO: OFF"
-          echo "======================================"
+          # lanjutkan perintah LTO kamu yang sekarang
 
       # ============================================================
       # DEPENDENCIES + BOTH TOOLCHAINS
