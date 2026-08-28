@@ -1335,11 +1335,11 @@ jobs:
       # ============================================================
       # UPLOAD IMAGE
       # ============================================================
-      - name: Upload SPECTRA Banner
+      - name: Upload kernel image
         uses: actions/upload-artifact@v4
         with:
-          name: SPECTRA-Banner
-          path: kernel-output/spectra.png
+          name: SPECTRA-Kernel-Image
+          path: kernel-output/Image
           if-no-files-found: error
 
       # ============================================================
