@@ -923,6 +923,40 @@ jobs:
           echo "Limit      : ${LIMIT_UA} uA"
           echo "Limit      : $((LIMIT_UA / 1000)) mA"
           echo "=========================================="
+
+      # ============================================================
+      # ADD GAMING ASCII LOGO
+      # ============================================================
+      - name: Add Gaming ASCII Logo
+        working-directory: ${{ env.ANYKERNEL_DIR }}
+        shell: bash
+        run: |
+         set -e
+
+         test -f anykernel.sh
+
+         cp anykernel.sh anykernel.sh.bak
+     
+         cat > /tmp/gaming_logo.txt <<'EOF'
+         ui_print " "
+         ui_print " __        __ _   _ ____  _____  ____  "
+         ui_print " \ \      / /| | | |  _ \| ____|  _ \ "
+         ui_print "  \ \ /\ / / | | | | |_) |  _| | | | |"
+         ui_print "   \ V  V /  | |_| |  _ <| |___| |_| |"
+         ui_print "    \_/\_/    \___/|_| \_\_____|____/ "
+         ui_print " "
+         ui_print "       +--------------------------------+"
+         ui_print "       |      WHYRED GAMING KERNEL      |"
+         ui_print "       |        [ GAME EDITION ]        |"
+         ui_print "       |        [ PERFORMANCE ]         |"
+         ui_print "       +--------------------------------+"
+         ui_print " "
+         EOF
+
+         cat /tmp/gaming_logo.txt anykernel.sh > anykernel.sh.new
+         mv anykernel.sh.new anykernel.sh
+
+         chmod +x anykernel.sh
           
       # ============================================================
       # PREPARE ANYKERNEL3 KERNEL IMAGE
