@@ -89,13 +89,13 @@ on:
           - PERFORMANCE
 
       CPU_OC:
-        description: "CPU OC 2.304 GHz"
+        description: "Enable CPU Overclock 2.304 GHz"
         required: true
+        default: "OFF"
         type: choice
-        default: "off"
         options:
-          - on
-          - off
+          - "OFF"
+          - "ON"
         
       ZRAM:
         description: "Enable automatic ZRAM"
@@ -515,56 +515,63 @@ jobs:
          olddefconfig
 
       # ==========================================
-      # CPU OC — SPECTRA 2.304 GHz
+      # CONFIGURE CPU OC
       # ==========================================
       - name: Configure CPU OC
         working-directory: kernel
         shell: bash
+        env:
+          CPU_OC: ${{ inputs.CPU_OC }}
         run: |
           set -e
 
-          echo "=========================================="
-          echo "        SPECTRA CPU CONFIGURATION"
-          echo "=========================================="
+          echo "========================================"
+          echo "       SPECTRA CPU CONFIGURATION"
+          echo "========================================"
+          echo "CPU_OC: $CPU_OC"
+          echo "Target : 2.304 GHz"
+          echo "========================================"
+ 
+          if [ "$CPU_OC" = "ON" ]; then
 
-          case "${{ inputs.CPU_OC }}" in
+            echo ""
+            echo "CPU OC ENABLED"
+            echo "Target frequency: 2304000 kHz"
 
-            on)
-              echo "CPU OC : ON"
-              echo "Target : 2.304 GHz"
-              echo "Value  : 2304000 kHz"
-
-              # Pastikan source memang memiliki entry 2.304 GHz
-              if ! grep -Rqs "2304000" \
+            # Cari frequency 2.304 GHz yang sudah ada
+            # di source/device tree.
+            if grep -Rni "2304000" \
                 arch/arm64/boot/dts/qcom \
-                drivers/cpufreq \
-                drivers/clk/qcom 2>/dev/null; then
+                2>/dev/null; then
 
-                echo "ERROR: 2.304 GHz entry tidak ditemukan di source!"
-                exit 1
-              fi
+              echo ""
+              echo "2.304 GHz frequency entry FOUND."
 
-              echo "2.304 GHz entry detected."
-              echo "CPU OC mode enabled."
+            else
 
-              echo "CPU_OC=on" >> "$GITHUB_ENV"
-              ;;
-
-            off)
-              echo "CPU OC : OFF"
-              echo "Using default CPU frequency configuration."
-
-              echo "CPU_OC=off" >> "$GITHUB_ENV"
-              ;;
-
-            *)
-              echo "ERROR: Invalid CPU_OC value!"
+              echo ""
+              echo "ERROR: 2304000 kHz entry tidak ditemukan!"
+              echo "Tidak melakukan perubahan frekuensi."
               exit 1
-              ;;
 
-          esac
+            fi
 
-          echo "=========================================="
+            elif [ "$CPU_OC" = "OFF" ]; then
+
+              echo ""
+              echo "CPU OC DISABLED"
+              echo "Using stock CPU frequency."
+
+            else
+
+              echo ""
+              echo "ERROR: Invalid CPU_OC value: '$CPU_OC'"
+              exit 1
+
+             fi
+
+             echo ""
+             echo "CPU configuration completed."
 
       # ============================================================
       # NETWORK / TCP TUNING
