@@ -992,21 +992,31 @@ jobs:
 
          cp anykernel.sh anykernel.sh.bak
      
-         cat > /tmp/gaming_logo.txt <<'EOF'
-         ui_print " "
-         ui_print " __        __ _   _ ____  _____  ____  "
-         ui_print " \ \      / /| | | |  _ \| ____|  _ \ "
-         ui_print "  \ \ /\ / / | | | | |_) |  _| | | | |"
-         ui_print "   \ V  V /  | |_| |  _ <| |___| |_| |"
-         ui_print "    \_/\_/    \___/|_| \_\_____|____/ "
-         ui_print " "
-         ui_print "       +--------------------------------+"
-         ui_print "       |      WHYRED GAMING KERNEL      |"
-         ui_print "       |        [ GAME EDITION ]        |"
-         ui_print "       |        [ PERFORMANCE ]         |"
-         ui_print "       +--------------------------------+"
-         ui_print " "
-         EOF
+                   cat > /tmp/gaming_logo.txt <<'EOF'
+          ui_print " "
+          ui_print "                    /\ "
+          ui_print "                    || "
+          ui_print "                    || "
+          ui_print "                    || "
+          ui_print "                    || "
+          ui_print "                   /  \ "
+          ui_print "                  /____\ "
+          ui_print "                    || "
+          ui_print " "
+          ui_print "        ______________________________________"
+          ui_print "      /                                      \\"
+          ui_print "     /          WHYRED GAMING KERNEL         \\"
+          ui_print "    |                                          |"
+          ui_print "    |          >>> PERFORMANCE <<<             |"
+          ui_print "    |                                          |"
+          ui_print "    |             GAME EDITION                |"
+          ui_print "    |                                          |"
+          ui_print "    |          >>> KERNEL INSTALLER <<<       |"
+          ui_print "    |__________________________________________|"
+          ui_print " "
+          ui_print "             [ PERFORMANCE MODE ]"
+          ui_print " "
+          EOF
 
          cat /tmp/gaming_logo.txt anykernel.sh > anykernel.sh.new
          mv anykernel.sh.new anykernel.sh
