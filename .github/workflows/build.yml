@@ -88,14 +88,15 @@ on:
           - BALANCED
           - PERFORMANCE
 
-      OC:
-        description: "CPU Overclock"
+      CPU_OC:
+        description: "CPU OC 2.304 GHz"
         required: true
-        default: "off"
         type: choice
+        default: "off"
         options:
+          - on
           - off
-          - 2.45GHz
+        
       ZRAM:
         description: "Enable Automatic ZRAM"
         required: true
@@ -510,51 +511,57 @@ jobs:
          CROSS_COMPILE_ARM32="$CROSS_COMPILE_ARM32" \
          olddefconfig
 
-      # ============================================================
-      # CPU OVERCLOCK - BIG CLUSTER 2.45GHz
-      # ============================================================
+      # ==========================================
+      # CPU OC — SPECTRA 2.304 GHz
+      # ==========================================
       - name: Configure CPU OC
-        if: ${{ inputs.OC == '2.45GHz' }}
         working-directory: kernel
+        shell: bash
         run: |
           set -e
 
-          echo "======================================"
-          echo "WHYRED BIG CLUSTER OC"
-          echo "======================================"
+          echo "=========================================="
+          echo "        SPECTRA CPU CONFIGURATION"
+          echo "=========================================="
 
-          DTS_DIR="arch/arm/boot/dts/qcom"
+          case "${{ inputs.CPU_OC }}" in
 
-          echo "Searching perfcl speed-bin tables..."
+            on)
+              echo "CPU OC : ON"
+              echo "Target : 2.304 GHz"
+              echo "Value  : 2304000 kHz"
 
-          grep -Rni \
-            "qcom,perfcl-speedbin" \
-            "$DTS_DIR" \
-            2>/dev/null || true
+              # Pastikan source memang memiliki entry 2.304 GHz
+              if ! grep -Rqs "2304000" \
+                arch/arm64/boot/dts/qcom \
+                drivers/cpufreq \
+                drivers/clk/qcom 2>/dev/null; then
 
-          echo ""
-          echo "Searching existing 2.4576GHz entries..."
+                echo "ERROR: 2.304 GHz entry tidak ditemukan di source!"
+                exit 1
+              fi
 
-          grep -Rni \
-            "2457600000" \
-            "$DTS_DIR" \
-            2>/dev/null || true
+              echo "2.304 GHz entry detected."
+              echo "CPU OC mode enabled."
 
-          echo ""
-          echo "Searching Big-cluster frequencies..."
+              echo "CPU_OC=on" >> "$GITHUB_ENV"
+              ;;
 
-          grep -RniE \
-            "1958400000|2150400000|2208000000" \
-            "$DTS_DIR" \
-            2>/dev/null || true
+            off)
+              echo "CPU OC : OFF"
+              echo "Using default CPU frequency configuration."
 
-          echo ""
-          echo "======================================"
-          echo "IMPORTANT"
-          echo "======================================"
-          echo "No blind global replacement will be performed."
-          echo "The correct perfcl speed-bin table must be identified"
-          echo "before modifying the OPP/LUT."
+              echo "CPU_OC=off" >> "$GITHUB_ENV"
+              ;;
+
+            *)
+              echo "ERROR: Invalid CPU_OC value!"
+              exit 1
+              ;;
+
+          esac
+
+          echo "=========================================="
 
       # ============================================================
       # NETWORK / TCP TUNING
@@ -663,6 +670,24 @@ jobs:
 
           echo "=== RAW IMAGE ==="
           ls -lh "$BUILD_DIR/arch/arm64/boot/Image"
+
+      - name: Verify CPU Configuration
+        working-directory: kernel
+        shell: bash
+        run: |
+          set -e
+
+          echo "=========================================="
+          echo "       SPECTRA CPU CONFIG CHECK"
+          echo "=========================================="
+
+          echo "CPU_OC : ${CPU_OC}"
+
+          grep -E \
+            'CONFIG_CPU_FREQ|CONFIG_CPU_BOOST' \
+            "$BUILD_DIR/.config" || true
+
+          echo "=========================================="
 
       # ============================================================
       # LZ4HC OPTIONAL
