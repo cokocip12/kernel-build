@@ -9,6 +9,18 @@ on:
         default: kernel-hmp
         type: string
 
+      kernel_name:
+          description: "Nama kernel"
+          required: true
+          default: "WhyredGaming"
+          type: string
+
+      kernel_version:
+          description: "Versi kernel"
+          required: true
+          default: "v1.0"
+          type: string
+
       clean_build:
         description: Clean build
         required: true
@@ -318,6 +330,59 @@ jobs:
           grep -E \
             'CONFIG_ARCH_QCOM|CONFIG_ARCH_SDM660|CONFIG_PREEMPT|CONFIG_CC_STACKPROTECTOR' \
             "$BUILD_DIR/.config" || true
+
+      # ============================================================
+      # SET AUTOMATIC KERNEL NAME
+      # ============================================================
+      - name: Set Automatic Kernel Name
+        working-directory: kernel
+        shell: bash
+        run: |
+          set -e
+
+          BASE_NAME="${{ inputs.kernel_name }}"
+          VERSION="${{ inputs.kernel_version }}"
+
+          if [ "${{ inputs.LTO }}" = "on" ]; then
+            LTO_NAME="LTO"
+          else
+            LTO_NAME="NoLTO"
+          fi
+
+          if [ "${{ inputs.LZ4HC }}" = "on" ]; then
+            LZ4_NAME="LZ4HC"
+          else
+            LZ4_NAME="LZ4"
+          fi
+
+          case "${{ inputs.ROOT_MANAGER }}" in
+            kernelsu)  KSU_NAME="KSU" ;;
+            ksun)      KSU_NAME="KSUN" ;;
+            sukisu)    KSU_NAME="SukiSU" ;;
+            resukisu)  KSU_NAME="ReSukiSU" ;;
+            mambosu)   KSU_NAME="MamboSU" ;;
+            apatch)    KSU_NAME="APatch" ;;
+            *)         KSU_NAME="NoRoot" ;;
+          esac
+
+          KERNEL_NAME="-${BASE_NAME}-${VERSION}-${KSU_NAME}-${LTO_NAME}-${LZ4_NAME}"
+
+          scripts/config --file "$BUILD_DIR/.config" \
+            --set-str CONFIG_LOCALVERSION "$KERNEL_NAME"
+
+          make O="$BUILD_DIR" \
+            ARCH="$ARCH" \
+            CROSS_COMPILE="$CROSS_COMPILE" \
+            CROSS_COMPILE_ARM32="$CROSS_COMPILE_ARM32" \
+            olddefconfig
+
+          echo "KERNEL_NAME=$KERNEL_NAME" >> "$GITHUB_ENV"
+
+          echo "======================================"
+          echo "KERNEL NAME: $KERNEL_NAME"
+          echo "======================================"
+
+          grep '^CONFIG_LOCALVERSION=' "$BUILD_DIR/.config" || true
 
       - name: Enable ZRAM
         if: ${{ inputs.ZRAM }}
