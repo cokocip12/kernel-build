@@ -1058,6 +1058,7 @@ jobs:
             "$ANYKERNEL_DIR/Image.lz4" 2>/dev/null || true
 
       # ============================================================
+      # ============================================================
       # AUTOMATIC ZRAM
       # ============================================================
       - name: Add Automatic ZRAM
@@ -1065,93 +1066,140 @@ jobs:
         run: |
           set -e
 
-          ZRAM_SCRIPT="$ANYKERNEL_DIR/ramdisk/sbin/zram-auto.sh"
+          RAMDISK="$ANYKERNEL_DIR/ramdisk"
 
-          mkdir -p "$ANYKERNEL_DIR/ramdisk/sbin"
+          mkdir -p "$RAMDISK/sbin"
 
-          cat > "$ZRAM_SCRIPT" <<'EOF'
+          # --------------------------------------------------------
+          # ZRAM SCRIPT
+          # --------------------------------------------------------
+          cat > "$RAMDISK/sbin/zram-auto.sh" <<'EOF'
           #!/system/bin/sh
 
           ZRAM="/sys/block/zram0"
 
+          echo "[ZRAM] Starting automatic ZRAM..." > /dev/kmsg
+
           # Wait for zram device
           i=0
-          while [ "$i" -lt 10 ]; do
-          [ -d "$ZRAM" ] && break
-          sleep 1
-          i=$((i + 1))
+          while [ "$i" -lt 30 ]; do
+              [ -d "$ZRAM" ] && break
+              sleep 1
+              i=$((i + 1))
           done
 
-          # Exit if zram does not exist
-          [ -d "$ZRAM" ] || exit 0
+          if [ ! -d "$ZRAM" ]; then
+              echo "[ZRAM] zram0 not found" > /dev/kmsg
+              exit 0
+          fi
 
-          # Detect RAM in MB
+          # Detect RAM
           RAM_MB=$(awk '/MemTotal/ {print int($2 / 1024)}' /proc/meminfo)
 
-          # Select zram size
           case "$RAM_MB" in
               ''|*[!0-9]*)
-              SIZE_MB=2048
-              ;;
-          0|1|2|3*)
-          SIZE_MB=2048
-              ;;
-          4*)
-          SIZE_MB=2048
-              ;;
-          5*)
-          SIZE_MB=3072
-              ;;
-          6*)
-          SIZE_MB=3072
-              ;;
-          7*|8*|9*)
-          SIZE_MB=4096
-              ;;
-          *)
-          SIZE_MB=6144
-              ;;
+                  SIZE_MB=2048
+                  ;;
+              0|1|2|3*)
+                  SIZE_MB=2048
+                  ;;
+              4*)
+                  SIZE_MB=2048
+                  ;;
+              5*|6*)
+                  SIZE_MB=3072
+                  ;;
+              7*|8*|9*)
+                  SIZE_MB=4096
+                  ;;
+              *)
+                  SIZE_MB=6144
+                  ;;
           esac
- 
+
           # Disable old swap
           swapoff "$ZRAM/dev" 2>/dev/null || true
 
-          # Reset zram
+          # Reset
           echo 1 > "$ZRAM/reset" 2>/dev/null || true
 
-          # Select LZ4HC when available
+          # Select compression
           if [ -f "$ZRAM/comp_algorithm" ]; then
-          if grep -qw "lz4hc" "$ZRAM/comp_algorithm"; then
-          echo lz4hc > "$ZRAM/comp_algorithm"
-          elif grep -qw "lz4" "$ZRAM/comp_algorithm"; then
-          echo lz4 > "$ZRAM/comp_algorithm"
-          fi
+              if grep -qw lz4hc "$ZRAM/comp_algorithm"; then
+                  echo lz4hc > "$ZRAM/comp_algorithm"
+              elif grep -qw lz4 "$ZRAM/comp_algorithm"; then
+                  echo lz4 > "$ZRAM/comp_algorithm"
+              elif grep -qw lzo "$ZRAM/comp_algorithm"; then
+                  echo lzo > "$ZRAM/comp_algorithm"
+              fi
           fi
 
-          # Set zram size
-          echo "${SIZE_MB}M" > "$ZRAM/disksize" 2>/dev/null || exit 0
- 
+          # Set size
+          echo "${SIZE_MB}M" > "$ZRAM/disksize" || {
+              echo "[ZRAM] Failed to set disksize" > /dev/kmsg
+              exit 0
+          }
+
           # Create swap
-          mkswap "$ZRAM/dev" >/dev/null 2>&1 || exit 0
- 
+          mkswap "$ZRAM/dev" >/dev/null 2>&1 || {
+              echo "[ZRAM] mkswap failed" > /dev/kmsg
+              exit 0
+          }
+
           # Enable swap
-          swapon "$ZRAM/dev" -p 32758 >/dev/null 2>&1 || exit 0
+          swapon "$ZRAM/dev" -p 32758 >/dev/null 2>&1 || {
+              echo "[ZRAM] swapon failed" > /dev/kmsg
+              exit 0
+          }
+
+          echo "[ZRAM] Enabled ${SIZE_MB}MB" > /dev/kmsg
+
+          if [ -f "$ZRAM/comp_algorithm" ]; then
+              echo "[ZRAM] Algorithm: $(cat "$ZRAM/comp_algorithm")" > /dev/kmsg
+          fi
 
           exit 0
           EOF
 
-          chmod 0755 "$ZRAM_SCRIPT"
+          chmod 0755 "$RAMDISK/sbin/zram-auto.sh"
+
+          # --------------------------------------------------------
+          # INIT SERVICE
+          # --------------------------------------------------------
+          cat > "$RAMDISK/init.zram.rc" <<'EOF'
+          on late-fs
+              start zram_auto
+
+          service zram_auto /sbin/zram-auto.sh
+              class late_start
+              user root
+              group root
+              oneshot
+              disabled
+          EOF
+
+          # --------------------------------------------------------
+          # IMPORT ZRAM INIT
+          # --------------------------------------------------------
+          if [ -f "$RAMDISK/init.rc" ]; then
+              if ! grep -q "init.zram.rc" "$RAMDISK/init.rc"; then
+                  echo "" >> "$RAMDISK/init.rc"
+                  echo "import /init.zram.rc" >> "$RAMDISK/init.rc"
+              fi
+          else
+              echo "WARNING: ramdisk/init.rc tidak ditemukan"
+          fi
 
           echo "======================================"
-          echo "AUTOMATIC ZRAM"
+          echo "AUTOMATIC ZRAM READY"
           echo "======================================"
 
-          ls -lh "$ZRAM_SCRIPT"
+          ls -lh "$RAMDISK/sbin/zram-auto.sh"
+          ls -lh "$RAMDISK/init.zram.rc"
 
-          echo "Checking syntax..."
-          sh -n "$ZRAM_SCRIPT"
-
-          echo "ZRAM SCRIPT: OK"
+          echo ""
+          echo "ZRAM INIT:"
+          grep -n "init.zram.rc" "$RAMDISK/init.rc" 2>/dev/null || true
 
       # ============================================================
       # PACKAGE ANYKERNEL3
