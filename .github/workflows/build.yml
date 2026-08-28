@@ -1212,59 +1212,117 @@ jobs:
           grep -n "init.zram.rc" "$RAMDISK/init.rc" 2>/dev/null || true
 
       # ============================================================
-      # PACKAGE FLASHABLE ZIP
+      # PACKAGE ANYKERNEL3
       # ============================================================
       - name: Package flashable ZIP
-        working-directory: ${{ env.ANYKERNEL_DIR }}
-        shell: bash
         run: |
-          set -euxo pipefail
+          set -e
 
           echo "======================================"
-          echo "PACKAGING SPECTRA KERNEL"
+          echo "PACKAGING SPECTRA ANYKERNEL3"
           echo "======================================"
 
-          echo "ANYKERNEL_DIR : $ANYKERNEL_DIR"
-          echo "KERNEL_NAME   : ${KERNEL_NAME:-unknown}"
+          cd "$ANYKERNEL_DIR"
 
-          echo ""
-          echo "=== ANYKERNEL FILES ==="
-          ls -lah
+          # Bersihkan kernel image lama
+          rm -f Image Image.lz4 Image.gz Image.gz-dtb
+
+          # ========================================================
+          # COPY KERNEL SESUAI PILIHAN LZ4HC
+          # ========================================================
+
+          if [ "${{ inputs.LZ4HC }}" = "on" ]; then
+
+            IMAGE="$BUILD_DIR/arch/arm64/boot/Image.lz4"
+
+            if [ ! -f "$IMAGE" ]; then
+              echo "ERROR: Image.lz4 tidak ditemukan!"
+              exit 1
+            fi
+
+            cp "$IMAGE" "$ANYKERNEL_DIR/Image.lz4"
+
+            echo "Kernel image : Image.lz4"
+            echo "LZ4HC        : ON"
+
+          else
+
+            IMAGE="$BUILD_DIR/arch/arm64/boot/Image"
+
+            if [ ! -f "$IMAGE" ]; then
+              echo "ERROR: Image tidak ditemukan!"
+              exit 1
+            fi
+
+            cp "$IMAGE" "$ANYKERNEL_DIR/Image"
+
+            echo "Kernel image : Image"
+            echo "LZ4HC        : OFF"
+
+          fi
+
+          # ========================================================
+          # VERIFY ANYKERNEL3
+          # ========================================================
 
           test -f anykernel.sh
 
-          if [ -f "$GITHUB_WORKSPACE/changelog.txt" ]; then
-            cp "$GITHUB_WORKSPACE/changelog.txt" ./changelog.txt
-            echo "Changelog added."
-          fi
-
           echo ""
-          echo "=== CHECK ZIP TOOL ==="
-          command -v zip
-          zip -v | head -n 2
+          echo "ANYKERNEL3 CONTENT:"
+          ls -lh Image* 2>/dev/null || true
+          ls -lh anykernel.sh
 
-          ZIP_NAME="${KERNEL_NAME:-SPECTRA}-build-${GITHUB_RUN_NUMBER}.zip"
+          # ========================================================
+          # KERNEL NAME
+          # ========================================================
+
+          ZIP_NAME="${KERNEL_NAME:-SPECTRA-Kernel}"
+
+          # Hilangkan karakter aneh untuk nama ZIP
+          ZIP_NAME=$(echo "$ZIP_NAME" | sed 's/^-//')
+
+          FINAL_ZIP="${ZIP_NAME}-${GITHUB_RUN_NUMBER}.zip"
+
+          # ========================================================
+          # CREATE ZIP
+          # ========================================================
 
           echo ""
           echo "Creating:"
-          echo "$ZIP_NAME"
+          echo "$FINAL_ZIP"
 
-          rm -f "$GITHUB_WORKSPACE/$ZIP_NAME"
-
-          zip -r9 "$GITHUB_WORKSPACE/$ZIP_NAME" . \
+          zip -r9 \
+            "$GITHUB_WORKSPACE/$FINAL_ZIP" \
+            . \
             -x ".git/*" \
-            -x ".git/**/*"
+            -x "*.github/*" \
+            -x "README.md"
+
+          # ========================================================
+          # VERIFY ZIP
+          # ========================================================
+
+          if [ ! -f "$GITHUB_WORKSPACE/$FINAL_ZIP" ]; then
+            echo "ERROR: ZIP gagal dibuat!"
+            exit 1
+          fi
 
           echo ""
           echo "======================================"
-          echo "ZIP CREATED SUCCESSFULLY"
+          echo "SPECTRA ANYKERNEL3 ZIP CREATED"
           echo "======================================"
-
-          ls -lh "$GITHUB_WORKSPACE/$ZIP_NAME"
+          echo "ZIP : $FINAL_ZIP"
+          echo "SIZE:"
+          ls -lh "$GITHUB_WORKSPACE/$FINAL_ZIP"
 
           echo ""
-          echo "=== ZIP CONTENT ==="
-          unzip -l "$GITHUB_WORKSPACE/$ZIP_NAME" | head -n 80
+          echo "ZIP CONTENT:"
+          unzip -l "$GITHUB_WORKSPACE/$FINAL_ZIP" | head -40
+
+          echo ""
+          echo "======================================"
+          echo "PACKAGE SUCCESS"
+          echo "======================================"
       
 
       # ============================================================
@@ -1277,17 +1335,19 @@ jobs:
       # ============================================================
       # UPLOAD IMAGE
       # ============================================================
-      - name: Upload kernel image
+      - name: Upload SPECTRA Banner
         uses: actions/upload-artifact@v4
         with:
-          name: Whyred-Kernel-Image
-          path: kernel-output/
+          name: SPECTRA-Banner
+          path: kernel-output/spectra.png
+          if-no-files-found: error
 
       # ============================================================
-      # UPLOAD ZIP
+      # UPLOAD ANYKERNEL3 ZIP
       # ============================================================
       - name: Upload AnyKernel3 ZIP
         uses: actions/upload-artifact@v4
         with:
-          name: Whyred-Kernel-AnyKernel3
-          path: Whyred-Kernel-*.zip
+          name: SPECTRA-Kernel
+          path: "*.zip"
+          if-no-files-found: error
