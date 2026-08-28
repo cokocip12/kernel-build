@@ -27,6 +27,24 @@ on:
           - 900mA
           - 1200mA
 
+      LTO:
+        description: "Enable Radcolor GCC LTO"
+        required: true
+        default: "off"
+        type: choice
+        options:
+          - "off"
+          - "on"
+
+      LZ4HC:
+        description: "Compress kernel with LZ4HC"
+        required: true
+        default: "off"
+        type: choice
+        options:
+          - "off"
+          - "on"
+
       NETWORK:
         description: "Network/TCP tuning"
         required: true
@@ -119,6 +137,31 @@ jobs:
           ref: ${{ inputs.branch }}
           fetch-depth: 1
           path: kernel
+
+      - name: Apply Radcolor GCC LTO
+        if: ${{ inputs.LTO == 'on' }}
+        working-directory: kernel
+        run: |
+          set -e
+
+          echo "======================================"
+          echo "RADColor GCC LTO: ON"
+          echo "======================================"
+
+          curl -L \
+            https://raw.githubusercontent.com/radcolor/patches/master/rad-kernel-gcc-lto-patch.patch \
+            -o /tmp/rad-kernel-gcc-lto.patch
+
+          git am /tmp/rad-kernel-gcc-lto.patch
+
+          echo "LTO patch applied successfully."
+
+      - name: LTO OFF
+        if: ${{ inputs.LTO == 'off' }}
+        run: |
+          echo "======================================"
+          echo "RADColor GCC LTO: OFF"
+          echo "======================================"
 
       # ============================================================
       # DEPENDENCIES + BOTH TOOLCHAINS
@@ -566,57 +609,48 @@ jobs:
           echo "=== RAW IMAGE ==="
           ls -lh "$BUILD_DIR/arch/arm64/boot/Image"
 
-       # ============================================================
-      # COMPRESS KERNEL IMAGE WITH LZ4HC
+      # ============================================================
+      # LZ4HC OPTIONAL
       # ============================================================
       - name: Compress kernel with LZ4HC
+        if: ${{ inputs.LZ4HC == 'on' }}
         working-directory: kernel
         shell: bash
         run: |
           set -e
 
           echo "======================================"
-          echo "COMPRESS KERNEL WITH LZ4HC"
+          echo "LZ4HC: ON"
           echo "======================================"
 
           IMAGE="$BUILD_DIR/arch/arm64/boot/Image"
 
-          echo "Looking for:"
-          echo "$IMAGE"
-
-          if [ ! -f "$IMAGE" ]; then
+          test -f "$IMAGE" || {
             echo "ERROR: Image tidak ditemukan!"
-            echo ""
-            echo "Searching available Image files:"
-            find "$BUILD_DIR" -type f \
-              \( -name "Image" -o -name "Image.gz" -o -name "Image.gz-dtb" \) \
-              -print
             exit 1
-          fi
+          }
 
-          echo ""
-          echo "Image ditemukan:"
-          ls -lh "$IMAGE"
-
-          # Install LZ4
           sudo apt-get update
           sudo apt-get install -y lz4
 
-          # Compress menggunakan LZ4HC
-          lz4 -9 -f "$IMAGE" "$BUILD_DIR/arch/arm64/boot/Image.lz4"
+          lz4 -9 -f \
+            "$IMAGE" \
+            "$BUILD_DIR/arch/arm64/boot/Image.lz4"
 
-          echo ""
-          echo "======================================"
-          echo "LZ4HC RESULT"
-          echo "======================================"
-
+          echo "=== LZ4HC RESULT ==="
           ls -lh \
             "$IMAGE" \
             "$BUILD_DIR/arch/arm64/boot/Image.lz4"
 
-          echo ""
-          echo "Image.lz4 berhasil dibuat."
 
+      - name: LZ4HC OFF
+        if: ${{ inputs.LZ4HC == 'off' }}
+        run: |
+          echo "======================================"
+          echo "LZ4HC: OFF"
+          echo "======================================"
+          echo "Using normal Image"
+          
       # ============================================================
       # CHECK OUTPUT
       # ============================================================
@@ -891,42 +925,49 @@ jobs:
           echo "=========================================="
           
       # ============================================================
-      # PUT LZ4 KERNEL INTO ANYKERNEL3
+      # PREPARE ANYKERNEL3 KERNEL IMAGE
       # ============================================================
-      - name: Prepare AnyKernel3 | LZ4 image
+      - name: Prepare AnyKernel3 kernel
         run: |
           set -e
 
-          echo "=== Searching kernel image ==="
+          echo "======================================"
+          echo "PREPARE ANYKERNEL3"
+          echo "======================================"
 
-          IMAGE_LZ4=""
+          if [ "${{ inputs.LZ4HC }}" = "on" ]; then
 
-          for f in \
-            "$BUILD_DIR/output/Image.lz4" \
-            "$BUILD_DIR/arch/arm64/boot/Image.lz4" \
-            "$BUILD_DIR/Image.lz4"
-          do
-            if [ -f "$f" ]; then
-              IMAGE_LZ4="$f"
-              break
-            fi
-          done
+            IMAGE="$BUILD_DIR/arch/arm64/boot/Image.lz4"
 
-          if [ -z "$IMAGE_LZ4" ]; then
-            echo "ERROR: Image.lz4 tidak ditemukan!"
-            echo "=== Available images ==="
-            find "$BUILD_DIR" -type f \
-              \( -name "Image" -o -name "Image.gz" -o -name "Image.gz-dtb" -o -name "Image.lz4" \) \
-              -print
-            exit 1
+            test -f "$IMAGE" || {
+              echo "ERROR: Image.lz4 tidak ditemukan!"
+              exit 1
+            }
+
+            cp "$IMAGE" "$ANYKERNEL_DIR/Image.lz4"
+
+            echo "Using: Image.lz4"
+
+          else
+
+            IMAGE="$BUILD_DIR/arch/arm64/boot/Image"
+
+            test -f "$IMAGE" || {
+              echo "ERROR: Image tidak ditemukan!"
+              exit 1
+            }
+
+            cp "$IMAGE" "$ANYKERNEL_DIR/Image"
+
+            echo "Using: Image"
+
           fi
 
-          echo "Found: $IMAGE_LZ4"
+          echo "=== AnyKernel3 kernel ==="
+          ls -lh \
+            "$ANYKERNEL_DIR/Image" \
+            "$ANYKERNEL_DIR/Image.lz4" 2>/dev/null || true
 
-          cp "$IMAGE_LZ4" "$ANYKERNEL_DIR/Image.lz4"
-
-          echo "=== AnyKernel3 files ==="
-          ls -lh "$ANYKERNEL_DIR/Image.lz4"
       # ============================================================
       # AUTOMATIC ZRAM
       # ============================================================
