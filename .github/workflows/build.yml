@@ -12,7 +12,7 @@ on:
       kernel_name:
           description: "Nama kernel"
           required: true
-          default: "WhyredGaming"
+          default: "SPECTRA"
           type: string
 
       kernel_version:
