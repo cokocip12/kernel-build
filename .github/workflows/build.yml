@@ -126,7 +126,7 @@ jobs:
     runs-on: ubuntu-22.04
 
     env:
-      KERNEL_REPO: https://github.com/cokocip12/android_kernel_xiaomi_whyred
+      KERNEL_REPO: https://github.com/cokocip12/Deagle-sdm660
       KERNEL_BRANCH: ${{ inputs.branch }}
 
       ARCH: arm64
@@ -149,7 +149,7 @@ jobs:
       - name: Checkout Kernel
         uses: actions/checkout@v4
         with:
-          repository: cokocip12/android_kernel_xiaomi_whyred
+          repository: cokocip12/Deagle-sdm660
           ref: ${{ inputs.branch }}
           fetch-depth: 1
           path: kernel
