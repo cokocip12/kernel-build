@@ -149,7 +149,7 @@ jobs:
       - name: Checkout Kernel
         uses: actions/checkout@v4
         with:
-          repository: radcolor/android_kernel_xiaomi_whyred
+          repository: cokocip12/android_kernel_xiaomi_whyred
           ref: ${{ inputs.branch }}
           fetch-depth: 1
           path: kernel
