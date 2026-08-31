@@ -742,26 +742,26 @@ jobs:
       # BUILD RAW KERNEL
       # ============================================================
       - name: Build Kernel
-        run: |
-         set -e
+        run: 
+          set -e
 
-         export PATH="$CLANG_DIR/bin:$PATH"
+          export PATH="$CLANG_DIR/bin:$PATH"
 
-         make O=out \
-         ARCH=arm64 \
-         SUBARCH=arm64 \
-         CC="$CLANG_DIR/bin/clang" \
-         LLVM=1 \
-         LLVM_IAS=1 \
-         whyred_defconfig
-   
-         make -j$(nproc) \
-         O=out \
-         ARCH=arm64 \
-         SUBARCH=arm64 \
-         CC="$CLANG_DIR/bin/clang" \
-         LLVM=1 \
-         LLVM_IAS=1
+          make O=out \
+          ARCH=arm64 \
+          SUBARCH=arm64 \
+          CC="$CLANG_DIR/bin/clang" \
+          LLVM=1 \
+          LLVM_IAS=1 \
+          whyred_defconfig
+
+          make -j$(nproc) \
+          O=out \
+          ARCH=arm64 \
+          SUBARCH=arm64 \
+          CC="$CLANG_DIR/bin/clang" \
+          LLVM=1 \
+          LLVM_IAS=1
 
       # ============================================================
       # LZ4HC OPTIONAL
