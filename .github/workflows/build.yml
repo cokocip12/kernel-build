@@ -742,26 +742,68 @@ jobs:
       # BUILD RAW KERNEL
       # ============================================================
       - name: Build Kernel
-        run: 
-          set -e
+        shell: bash
+        run: |
+         set -e
 
-          export PATH="$CLANG_DIR/bin:$PATH"
+         cd "$KERNEL_DIR"
 
-          make O=out \
-          ARCH=arm64 \
-          SUBARCH=arm64 \
-          CC="$CLANG_DIR/bin/clang" \
-          LLVM=1 \
-          LLVM_IAS=1 \
-          whyred_defconfig
+         echo "=== KERNEL SOURCE ==="
+         pwd
 
-          make -j$(nproc) \
-          O=out \
-          ARCH=arm64 \
-          SUBARCH=arm64 \
-          CC="$CLANG_DIR/bin/clang" \
-          LLVM=1 \
-          LLVM_IAS=1
+         echo "=== CHECK DEFCONFIG ==="
+         ls -lah arch/arm64/configs/ | grep -E 'whyred.*defconfig' || true
+
+         if [ -f "arch/arm64/configs/whyred_defconfig" ]; then
+         DEFCONFIG="whyred_defconfig"
+         elif [ -f "arch/arm64/configs/whyred-newcam_defconfig" ]; then
+         DEFCONFIG="whyred-newcam_defconfig"
+         else
+         echo "ERROR: Whyred defconfig tidak ditemukan!"
+         exit 1
+         fi
+
+         echo "Using DEFCONFIG: $DEFCONFIG"
+
+         mkdir -p "$BUILD_DIR"
+
+         export ARCH=arm64
+         export SUBARCH=arm64
+
+         export CC=clang
+         export LLVM=1
+         export LLVM_IAS=1
+         export LD=ld.lld
+         export AR=llvm-ar
+         export NM=llvm-nm
+         export OBJCOPY=llvm-objcopy
+         export OBJDUMP=llvm-objdump
+         export STRIP=llvm-strip
+
+         echo "=== CLANG ==="
+         clang --version
+         ld.lld --version
+
+         echo "=== MAKE DEFCONFIG ==="
+
+         make \
+         O="$BUILD_DIR" \
+         ARCH=arm64 \
+         "$DEFCONFIG"
+
+         echo "=== BUILD KERNEL ==="
+
+         make \
+         -j"$(nproc)" \
+         O="$BUILD_DIR" \
+         ARCH=arm64 \
+         CC=clang \
+         LLVM=1 \
+         LLVM_IAS=1 \
+         LD=ld.lld
+
+         echo "=== BUILD FINISHED ==="
+         ls -lah "$BUILD_DIR/arch/arm64/boot/"
 
       # ============================================================
       # LZ4HC OPTIONAL
