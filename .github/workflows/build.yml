@@ -4,10 +4,14 @@ on:
   workflow_dispatch:
     inputs:
       branch:
-        description: Kernel branch
+        description: Pilih branch source kernel
         required: true
         default: kernel-hmp
-        type: string
+        type: choice
+        options:
+          - kernel-hmp
+          - susfs-4.4.271
+        
 
       kernel_name:
           description: "Nama kernel"
