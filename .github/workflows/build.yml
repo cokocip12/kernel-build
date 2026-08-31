@@ -167,6 +167,26 @@ jobs:
           fetch-depth: 1
           path: kernel
 
+      - name: Setup Kernel Directories
+        shell: bash
+        run: |
+         set -e
+
+         export KERNEL_DIR="$GITHUB_WORKSPACE"
+         export BUILD_DIR="$GITHUB_WORKSPACE/out"
+
+         echo "KERNEL_DIR=$KERNEL_DIR" >> "$GITHUB_ENV"
+         echo "BUILD_DIR=$BUILD_DIR" >> "$GITHUB_ENV"
+
+         mkdir -p "$BUILD_DIR"
+
+         echo "===== KERNEL SOURCE ====="
+         pwd
+         ls -la "$KERNEL_DIR"
+
+         echo "===== DEFCONFIG ====="
+         ls -la "$KERNEL_DIR/arch/arm64/configs/"
+
       - name: Setup Clang 12.0.5
         run: |
          set -e
@@ -699,15 +719,56 @@ jobs:
 
          echo "=== CLANG DIRECTORY ==="
          ls -lah "$CLANG_DIR/bin"
+         
+      - name: Configure Clang
+        shell: bash
+        run: |
+         set -e
+
+         export PATH="$CLANG_DIR/bin:$PATH"
+
+         echo "CC=clang" >> "$GITHUB_ENV"
+         echo "LD=ld.lld" >> "$GITHUB_ENV"
+         echo "LLVM=1" >> "$GITHUB_ENV"
+         echo "LLVM_IAS=1" >> "$GITHUB_ENV"
+
+         echo "===== CLANG ====="
+         which clang
+         clang --version
+
+         echo "===== LLD ====="
+         which ld.lld
+         ld.lld --version
+
 
       - name: Find Whyred defconfig
         shell: bash
         run: |
-         echo "===== DEFCONFIG FILES ====="
-         find arch/arm64 -type f \( -name "*whyred*" -o -name "*whyred*defconfig*" \) -print
+         set -e
+    
+         echo "===== KERNEL SOURCE ====="
+         echo "$KERNEL_DIR"
 
-         echo "===== AVAILABLE DEFCONFIG TARGETS ====="
-         make ARCH=arm64 help | grep -i whyred || true
+         test -d "$KERNEL_DIR/arch/arm64" || {
+         echo "ERROR: arch/arm64 tidak ditemukan!"
+         exit 1
+         }
+
+         echo "===== WHYRED DEFCONFIG ====="
+
+         find "$KERNEL_DIR/arch/arm64/configs" \
+         -maxdepth 1 \
+         -type f \
+         -name '*whyred*' \
+         -print
+
+         test -f "$KERNEL_DIR/arch/arm64/configs/whyred_defconfig" || {
+         echo "ERROR: whyred_defconfig tidak ditemukan!"
+         exit 1
+         }
+
+         echo "FOUND:"
+         echo "$KERNEL_DIR/arch/arm64/configs/whyred_defconfig"
 
       # ============================================================
       # BUILD RAW KERNEL
@@ -715,42 +776,38 @@ jobs:
       - name: Build Kernel
         shell: bash
         run: |
+         set -e
 
+         cd "$KERNEL_DIR"
 
          export PATH="$CLANG_DIR/bin:$PATH"
 
-         export ARCH=arm64
-         export SUBARCH=arm64
-
-         export CC=clang
-         export LD=ld.lld
-
-         export LLVM=1
-         export LLVM_IAS=1
-
-         export CLANG_TRIPLE=aarch64-linux-gnu-
-         export CROSS_COMPILE=aarch64-linux-gnu-
-
          echo "===== TOOLCHAIN ====="
+         which clang
          clang --version
+         which ld.lld
          ld.lld --version
 
          echo "===== DEFCONFIG ====="
 
-         # GANTI jika nama defconfig berbeda
-         make O=out ARCH=arm64 whyred_defconfig
-
-         echo "===== BUILD ====="
-
-         make -j"$(nproc)" \
-         O=out \
+         make O="$BUILD_DIR" \
          ARCH=arm64 \
          CC=clang \
          LD=ld.lld \
          LLVM=1 \
          LLVM_IAS=1 \
-         CLANG_TRIPLE=aarch64-linux-gnu- \
-         CROSS_COMPILE=aarch64-linux-gnu-
+         whyred_defconfig
+
+         echo "===== BUILD ====="
+
+         make -j"$(nproc)" \
+         O="$BUILD_DIR" \
+         ARCH=arm64 \
+         CC=clang \
+         LD=ld.lld \
+         LLVM=1 \
+         LLVM_IAS=1
+
 
       # ============================================================
       # LZ4HC OPTIONAL
