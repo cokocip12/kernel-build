@@ -217,42 +217,52 @@ jobs:
             gcc-arm-linux-gnueabi \
             binutils-arm-linux-gnueabi
 
-      - name: Setup Clang 12.0.5
+      - name: Configure Clang 12.0.5
         shell: bash
         run: |
          set -e
 
-         CLANG_DIR="$HOME/clang-r416183b"
-
-         if [ ! -x "$CLANG_DIR/clang-r416183b/bin/clang" ]; then
-         git clone --depth=1 --branch r416183b \
-         https://android.googlesource.com/toolchain/llvm-project \
-         "$CLANG_DIR"
-         fi
-
-         echo "$CLANG_DIR/clang-r416183b/bin" >> "$GITHUB_PATH"
-
-         echo "CLANG_DIR=$CLANG_DIR/clang-r416183b" >> "$GITHUB_ENV"
-         echo "PATH=$CLANG_DIR/clang-r416183b/bin:$PATH" >> "$GITHUB_ENV"
-
-         echo "=== CLANG ==="
-         "$CLANG_DIR/clang-r416183b/bin/clang" --version
-
-         echo "=== LLVM ==="
-         "$CLANG_DIR/clang-r416183b/bin/ld.lld" --version
-
-      - name: Configure Clang
-        shell: bash
-        run: |
          export PATH="$CLANG_DIR/bin:$PATH"
 
+         echo "===== CLANG 12.0.5 CONFIG ====="
+
+         echo "PATH=$PATH"
+         echo "CLANG_DIR=$CLANG_DIR"
+ 
+         which clang
+         which ld.lld
+
+         clang --version
+         ld.lld --version
+
+         # Kernel target
+         echo "ARCH=arm64" >> "$GITHUB_ENV"
+         echo "SUBARCH=arm64" >> "$GITHUB_ENV"
+
+         # LLVM
          echo "CC=clang" >> "$GITHUB_ENV"
          echo "LD=ld.lld" >> "$GITHUB_ENV"
          echo "LLVM=1" >> "$GITHUB_ENV"
          echo "LLVM_IAS=1" >> "$GITHUB_ENV"
 
-         clang --version
-         ld.lld --version
+         # Android/ARM64 target
+         echo "CLANG_TRIPLE=aarch64-linux-gnu-" >> "$GITHUB_ENV"
+         echo "CROSS_COMPILE=aarch64-linux-gnu-" >> "$GITHUB_ENV"
+
+         # Pastikan linker target tersedia
+         echo "LLVM_OBJCOPY=llvm-objcopy" >> "$GITHUB_ENV"
+         echo "LLVM_OBJDUMP=llvm-objdump" >> "$GITHUB_ENV"
+         echo "LLVM_NM=llvm-nm" >> "$GITHUB_ENV"
+         echo "LLVM_STRIP=llvm-strip" >> "$GITHUB_ENV"
+
+         echo "===== FINAL LLVM ENV ====="
+         echo "CC=clang"
+         echo "LD=ld.lld"
+         echo "LLVM=1"
+         echo "LLVM_IAS=1"
+         echo "CLANG_TRIPLE=aarch64-linux-gnu-"
+         echo "CROSS_COMPILE=aarch64-linux-gnu-"
+
 
       # ============================================================
       # TOOLCHAIN
@@ -721,32 +731,42 @@ jobs:
       - name: Build Kernel
         shell: bash
         run: |
-         set -eo pipefail
 
-         cd "$KERNEL_DIR"
 
-         echo "===== BUILD KERNEL ====="
+         export PATH="$CLANG_DIR/bin:$PATH"
+
+         export ARCH=arm64
+         export SUBARCH=arm64
+
+         export CC=clang
+         export LD=ld.lld
+
+         export LLVM=1
+         export LLVM_IAS=1
+
+         export CLANG_TRIPLE=aarch64-linux-gnu-
+         export CROSS_COMPILE=aarch64-linux-gnu-
+
+         echo "===== TOOLCHAIN ====="
+         clang --version
+         ld.lld --version
+
+         echo "===== DEFCONFIG ====="
+
+         # GANTI jika nama defconfig berbeda
+         make O=out ARCH=arm64 whyred_defconfig
+
+         echo "===== BUILD ====="
 
          make -j"$(nproc)" \
-          O="$BUILD_DIR" \
-          ARCH=arm64 \
-          CC=clang \
-          LLVM=1 \
-          LLVM_IAS=1 \
-          LD=ld.lld \
-          V=1 \
-          2>&1 | tee "$BUILD_DIR/kernel-build.log"
-          
-      - name: Show Build Error
-        if: failure()
-        shell: bash
-        run: |
-          echo "===== BUILD FAILED ====="
-          echo "Searching kernel build log..."
-
-          grep -RniE \
-            "error:|Error:|undefined reference|No rule to make|fatal error|FAILED" \
-            "$BUILD_DIR" 2>/dev/null | tail -100 || true
+         O=out \
+         ARCH=arm64 \
+         CC=clang \
+         LD=ld.lld \
+         LLVM=1 \
+         LLVM_IAS=1 \
+         CLANG_TRIPLE=aarch64-linux-gnu- \
+         CROSS_COMPILE=aarch64-linux-gnu-
 
       # ============================================================
       # LZ4HC OPTIONAL
