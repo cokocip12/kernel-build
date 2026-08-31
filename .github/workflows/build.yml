@@ -217,51 +217,26 @@ jobs:
             gcc-arm-linux-gnueabi \
             binutils-arm-linux-gnueabi
 
-      - name: Configure Clang 12.0.5
+      - name: Configure Clang
         shell: bash
         run: |
-         set -e
+         export CLANG_DIR="/home/runner/clang-r416183b/clang-r416183b"
 
-         export PATH="$CLANG_DIR/bin:$PATH"
+         echo "CLANG_DIR=$CLANG_DIR" >> "$GITHUB_ENV"
+         echo "$CLANG_DIR/bin" >> "$GITHUB_PATH"
 
-         echo "===== CLANG 12.0.5 CONFIG ====="
-
-         echo "PATH=$PATH"
-         echo "CLANG_DIR=$CLANG_DIR"
- 
-         which clang
-         which ld.lld
-
-         clang --version
-         ld.lld --version
-
-         # Kernel target
-         echo "ARCH=arm64" >> "$GITHUB_ENV"
-         echo "SUBARCH=arm64" >> "$GITHUB_ENV"
-
-         # LLVM
          echo "CC=clang" >> "$GITHUB_ENV"
          echo "LD=ld.lld" >> "$GITHUB_ENV"
          echo "LLVM=1" >> "$GITHUB_ENV"
          echo "LLVM_IAS=1" >> "$GITHUB_ENV"
 
-         # Android/ARM64 target
-         echo "CLANG_TRIPLE=aarch64-linux-gnu-" >> "$GITHUB_ENV"
-         echo "CROSS_COMPILE=aarch64-linux-gnu-" >> "$GITHUB_ENV"
+         echo "===== CLANG ====="
+         which clang
+         clang --version
 
-         # Pastikan linker target tersedia
-         echo "LLVM_OBJCOPY=llvm-objcopy" >> "$GITHUB_ENV"
-         echo "LLVM_OBJDUMP=llvm-objdump" >> "$GITHUB_ENV"
-         echo "LLVM_NM=llvm-nm" >> "$GITHUB_ENV"
-         echo "LLVM_STRIP=llvm-strip" >> "$GITHUB_ENV"
-
-         echo "===== FINAL LLVM ENV ====="
-         echo "CC=clang"
-         echo "LD=ld.lld"
-         echo "LLVM=1"
-         echo "LLVM_IAS=1"
-         echo "CLANG_TRIPLE=aarch64-linux-gnu-"
-         echo "CROSS_COMPILE=aarch64-linux-gnu-"
+         echo "===== LLD ====="
+         which ld.lld
+         ld.lld --version
 
 
       # ============================================================
@@ -724,6 +699,15 @@ jobs:
 
          echo "=== CLANG DIRECTORY ==="
          ls -lah "$CLANG_DIR/bin"
+
+      - name: Find Whyred defconfig
+        shell: bash
+        run: |
+         echo "===== DEFCONFIG FILES ====="
+         find arch/arm64 -type f \( -name "*whyred*" -o -name "*whyred*defconfig*" \) -print
+
+         echo "===== AVAILABLE DEFCONFIG TARGETS ====="
+         make ARCH=arm64 help | grep -i whyred || true
 
       # ============================================================
       # BUILD RAW KERNEL
