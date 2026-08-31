@@ -40,7 +40,7 @@ on:
           - 1200mA
 
       LTO:
-        description: "Enable Radcolor GCC LTO"
+        description: "Enable Proton Clang LTO"
         required: true
         default: "off"
         type: choice
@@ -154,20 +154,59 @@ jobs:
           fetch-depth: 1
           path: kernel
 
-      - name: Apply Radcolor GCC LTO
+      - name: Setup Proton Clang 12.0.5
+        run: |
+          set -e
+
+          echo "======================================"
+          echo "PROTON CLANG 12.0.5"
+          echo "======================================"
+
+          TOOLCHAIN_DIR="$HOME/proton-clang"
+          if [ ! -x "$TOOLCHAIN_DIR/bin/clang" ]; then
+            rm -rf "$TOOLCHAIN_DIR"
+            git clone --depth=1 --branch 12.0.5 \
+              https://github.com/kdrag0n/proton-clang.git \
+              "$TOOLCHAIN_DIR"
+          fi
+
+          echo "$TOOLCHAIN_DIR/bin" >> "$GITHUB_PATH"
+
+          echo "Proton Clang:"
+          "$TOOLCHAIN_DIR/bin/clang" --version
+
+          echo "CLANG_TRIPLE=aarch64-linux-gnu-" >> "$GITHUB_ENV"
+          echo "CROSS_COMPILE=aarch64-linux-gnu-" >> "$GITHUB_ENV"
+          echo "CROSS_COMPILE_ARM32=arm-linux-gnueabi-" >> "$GITHUB_ENV"
+
+      - name: Configure Proton Clang LTO
         if: ${{ inputs.LTO == 'on' }}
         working-directory: kernel
         run: |
           set -e
 
           echo "======================================"
-          echo "RADCOLOR GCC LTO: ON"
+          echo "PROTON CLANG LTO: ON"
           echo "======================================"
 
-          git config --global user.name "GitHub Actions"
-          git config --global user.email "actions@github.com"
+          test -x "$HOME/proton-clang/bin/clang"
 
-          # lanjutkan perintah LTO kamu yang sekarang
+          # Kernel 4.4 uses the legacy LLVM LTO configuration when available.
+          if grep -q '^config LTO_CLANG' arch/Kconfig 2>/dev/null; then
+            scripts/config --file "$BUILD_DIR/.config" --enable CONFIG_LTO_CLANG || true
+          fi
+
+          if grep -q '^config LTO' arch/Kconfig 2>/dev/null; then
+            scripts/config --file "$BUILD_DIR/.config" --enable CONFIG_LTO || true
+          fi
+
+          make O="$BUILD_DIR" ARCH="$ARCH" \
+            CROSS_COMPILE="$CROSS_COMPILE" \
+            CROSS_COMPILE_ARM32="$CROSS_COMPILE_ARM32" \
+            olddefconfig
+
+          echo "=== LTO CONFIG ==="
+          grep -E '^CONFIG_(LTO|LTO_CLANG)' "$BUILD_DIR/.config" || true
 
       # ============================================================
       # DEPENDENCIES + BOTH TOOLCHAINS
@@ -348,7 +387,7 @@ jobs:
           VERSION="${{ inputs.kernel_version }}"
 
           if [ "${{ inputs.LTO }}" = "on" ]; then
-            LTO_NAME="LTO"
+            LTO_NAME="PCLTO"
           else
             LTO_NAME="NoLTO"
           fi
@@ -663,15 +702,26 @@ jobs:
           export SUBARCH=arm64
           export CROSS_COMPILE=aarch64-linux-gnu-
           export CROSS_COMPILE_ARM32=arm-linux-gnueabi-
+          export CC="$HOME/proton-clang/bin/clang"
+          export LLVM=1
+          export LLVM_IAS=1
 
           echo "======================================"
           echo "BUILDING WHYRED KERNEL"
           echo "======================================"
+          echo "Compiler:"
+          "$CC" --version | head -1
+          echo "LLVM=$LLVM"
+          echo "LLVM_IAS=$LLVM_IAS"
+          echo "LTO=${{ inputs.LTO }}"
 
           make -j"$(nproc)" \
             O="$BUILD_DIR" \
             ARCH="$ARCH" \
             SUBARCH="$SUBARCH" \
+            CC="$CC" \
+            LLVM="$LLVM" \
+            LLVM_IAS="$LLVM_IAS" \
             CROSS_COMPILE="$CROSS_COMPILE" \
             CROSS_COMPILE_ARM32="$CROSS_COMPILE_ARM32" \
             Image
