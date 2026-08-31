@@ -701,26 +701,6 @@ jobs:
          echo "=== CLANG DIRECTORY ==="
          ls -lah "$CLANG_DIR/bin"
          
-      - name: Configure Clang
-        shell: bash
-        run: |
-         set -e
-
-         export PATH="$CLANG_DIR/bin:$PATH"
-
-         echo "CC=clang" >> "$GITHUB_ENV"
-         echo "LD=ld.lld" >> "$GITHUB_ENV"
-         echo "LLVM=1" >> "$GITHUB_ENV"
-         echo "LLVM_IAS=1" >> "$GITHUB_ENV"
-
-         echo "===== CLANG ====="
-         which clang
-         clang --version
-
-         echo "===== LLD ====="
-         which ld.lld
-         ld.lld --version
-
 
       - name: Find Whyred defconfig
         shell: bash
@@ -754,6 +734,7 @@ jobs:
       # ============================================================
       # BUILD RAW KERNEL
       # ============================================================
+      
       - name: Build Kernel
         shell: bash
         run: |
@@ -766,29 +747,31 @@ jobs:
          echo "===== TOOLCHAIN ====="
          which clang
          clang --version
-         which ld.lld
-         ld.lld --version
+
+         which aarch64-linux-gnu-ld
+         aarch64-linux-gnu-ld --version
 
          echo "===== DEFCONFIG ====="
-
+   
          make O="$BUILD_DIR" \
          ARCH=arm64 \
+         CROSS_COMPILE=aarch64-linux-gnu- \
+         CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
          CC=clang \
-         LD=ld.lld \
          LLVM=1 \
          LLVM_IAS=1 \
          whyred_defconfig
-
+  
          echo "===== BUILD ====="
 
          make -j"$(nproc)" \
          O="$BUILD_DIR" \
          ARCH=arm64 \
+         CROSS_COMPILE=aarch64-linux-gnu- \
+         CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
          CC=clang \
-         LD=ld.lld \
          LLVM=1 \
          LLVM_IAS=1
-
 
       # ============================================================
       # LZ4HC OPTIONAL
