@@ -717,64 +717,51 @@ jobs:
             echo "SUSFS: DISABLED"
           fi
 
+      - name: Check Clang 12.0.5
+        run: |
+         set -x
+
+         echo "=== ENV ==="
+         echo "PATH=$PATH"
+         echo "CC=$CC"
+         echo "LLVM=$LLVM"
+         echo "CLANG_DIR=$CLANG_DIR"
+ 
+         echo "=== CLANG ==="
+         which clang
+         clang --version
+
+         echo "=== LLVM TOOLS ==="
+         which ld.lld || true
+         ld.lld --version || true
+
+         echo "=== CLANG DIRECTORY ==="
+         ls -lah "$CLANG_DIR/bin"
+
       # ============================================================
       # BUILD RAW KERNEL
       # ============================================================
-      - name: Build kernel
-        working-directory: kernel
+      - name: Build Kernel
         run: |
-          set -e
+         set -e
 
-          export ARCH=arm64
-          export SUBARCH=arm64
-          export CROSS_COMPILE=aarch64-linux-gnu-
-          export CROSS_COMPILE_ARM32=arm-linux-gnueabi-
-          export CC="$HOME/proton-clang/bin/clang"
-          export LLVM=1
-          export LLVM_IAS=1
+         export PATH="$CLANG_DIR/bin:$PATH"
 
-          echo "======================================"
-          echo "BUILDING WHYRED KERNEL"
-          echo "======================================"
-          echo "Compiler:"
-          "$CC" --version | head -1
-          echo "LLVM=$LLVM"
-          echo "LLVM_IAS=$LLVM_IAS"
-          echo "LTO=${{ inputs.LTO }}"
-
-          make -j"$(nproc)" \
-            O="$BUILD_DIR" \
-            ARCH="$ARCH" \
-            SUBARCH="$SUBARCH" \
-            CC="$CC" \
-            LLVM="$LLVM" \
-            LLVM_IAS="$LLVM_IAS" \
-            CROSS_COMPILE="$CROSS_COMPILE" \
-            CROSS_COMPILE_ARM32="$CROSS_COMPILE_ARM32" \
-            Image
-
-          test -f "$BUILD_DIR/arch/arm64/boot/Image"
-
-          echo "=== RAW IMAGE ==="
-          ls -lh "$BUILD_DIR/arch/arm64/boot/Image"
-
-      - name: Verify CPU Configuration
-        working-directory: kernel
-        shell: bash
-        run: |
-          set -e
-
-          echo "=========================================="
-          echo "       SPECTRA CPU CONFIG CHECK"
-          echo "=========================================="
-
-          echo "CPU_OC : ${CPU_OC}"
-
-          grep -E \
-            'CONFIG_CPU_FREQ|CONFIG_CPU_BOOST' \
-            "$BUILD_DIR/.config" || true
-
-          echo "=========================================="
+         make O=out \
+         ARCH=arm64 \
+         SUBARCH=arm64 \
+         CC="$CLANG_DIR/bin/clang" \
+         LLVM=1 \
+         LLVM_IAS=1 \
+         whyred_defconfig
+   
+         make -j$(nproc) \
+         O=out \
+         ARCH=arm64 \
+         SUBARCH=arm64 \
+         CC="$CLANG_DIR/bin/clang" \
+         LLVM=1 \
+         LLVM_IAS=1
 
       # ============================================================
       # LZ4HC OPTIONAL
