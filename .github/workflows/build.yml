@@ -356,26 +356,43 @@ jobs:
       # ============================================================
       # CONFIGURE
       # ============================================================
-      - name: Configure kernel
+      - name: Configure Kernel
+        shell: bash
         working-directory: kernel
         run: |
-          mkdir -p "$BUILD_DIR"
+         set -e
 
-          make O="$BUILD_DIR" \
-            ARCH="$ARCH" \
-            SUBARCH="$SUBARCH" \
-            CROSS_COMPILE="$CROSS_COMPILE" \
-            CROSS_COMPILE_ARM32="$CROSS_COMPILE_ARM32" \
-            "$DEFCONFIG"
+         echo "=== Loading Whyred defconfig ==="
 
-          echo ""
-          echo "======================================"
-          echo "CONFIGURATION"
-          echo "======================================"
+         make O="$BUILD_DIR" \
+         ARCH="$ARCH" \
+         CROSS_COMPILE="$CROSS_COMPILE" \
+         CROSS_COMPILE_ARM32="$CROSS_COMPILE_ARM32" \
+         whyred_defconfig
 
-          grep -E \
-            'CONFIG_ARCH_QCOM|CONFIG_ARCH_SDM660|CONFIG_PREEMPT|CONFIG_CC_STACKPROTECTOR' \
-            "$BUILD_DIR/.config" || true
+         echo "=== Enabling KernelSU ==="
+
+         scripts/config --file "$BUILD_DIR/.config" \
+         --enable CONFIG_OVERLAY_FS
+
+         scripts/config --file "$BUILD_DIR/.config" \
+         --enable CONFIG_KSU
+
+         scripts/config --file "$BUILD_DIR/.config" \
+         --enable CONFIG_KSU_DEBUG
+
+         echo "=== Running olddefconfig ==="
+
+         make O="$BUILD_DIR" \
+         ARCH="$ARCH" \
+         CROSS_COMPILE="$CROSS_COMPILE" \
+         CROSS_COMPILE_ARM32="$CROSS_COMPILE_ARM32" \
+         olddefconfig
+
+         echo "=== KernelSU Config ==="
+
+         grep -nE '^CONFIG_(OVERLAY_FS|KSU|KSU_DEBUG)=' \
+         "$BUILD_DIR/.config" || true
 
       - name: Enable ZRAM
         if: ${{ inputs.ZRAM }}
