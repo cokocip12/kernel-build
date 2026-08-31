@@ -167,30 +167,26 @@ jobs:
           fetch-depth: 1
           path: kernel
 
-      - name: Setup Proton Clang 12.0.5
+      - name: Setup Clang 12.0.5
         run: |
-          set -e
+         set -e
 
-          echo "======================================"
-          echo "PROTON CLANG 12.0.5"
-          echo "======================================"
+         TOOLCHAIN_DIR="$HOME/clang-r416183b"
 
-          TOOLCHAIN_DIR="$HOME/proton-clang"
-          if [ ! -x "$TOOLCHAIN_DIR/bin/clang" ]; then
-            rm -rf "$TOOLCHAIN_DIR"
-            git clone --depth=1 --branch 12.0.5 \
-              https://github.com/kdrag0n/proton-clang.git \
-              "$TOOLCHAIN_DIR"
-          fi
+         rm -rf "$TOOLCHAIN_DIR"
 
-          echo "$TOOLCHAIN_DIR/bin" >> "$GITHUB_PATH"
+         git clone --depth=1 \
+         --branch android12-release \
+         https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86 \
+         "$TOOLCHAIN_DIR"
+ 
+         echo "$TOOLCHAIN_DIR/clang-r416183b/bin" >> "$GITHUB_PATH"
 
-          echo "Proton Clang:"
-          "$TOOLCHAIN_DIR/bin/clang" --version
+         echo "CLANG_TRIPLE=aarch64-linux-gnu-" >> "$GITHUB_ENV"
+         echo "CROSS_COMPILE=aarch64-linux-gnu-" >> "$GITHUB_ENV"
+         echo "CROSS_COMPILE_ARM32=arm-linux-gnueabi-" >> "$GITHUB_ENV"
 
-          echo "CLANG_TRIPLE=aarch64-linux-gnu-" >> "$GITHUB_ENV"
-          echo "CROSS_COMPILE=aarch64-linux-gnu-" >> "$GITHUB_ENV"
-          echo "CROSS_COMPILE_ARM32=arm-linux-gnueabi-" >> "$GITHUB_ENV"
+         clang --version
 
       # ============================================================
       # DEPENDENCIES + BOTH TOOLCHAINS
@@ -357,35 +353,7 @@ jobs:
           grep -E \
             'CONFIG_ARCH_QCOM|CONFIG_ARCH_SDM660|CONFIG_PREEMPT|CONFIG_CC_STACKPROTECTOR' \
             "$BUILD_DIR/.config" || true
-
-      - name: Configure Proton Clang LTO
-        if: ${{ inputs.LTO == 'on' }}
-        working-directory: kernel
-        run: |
-          set -e
-
-          echo "======================================"
-          echo "PROTON CLANG LTO: ON"
-          echo "======================================"
-
-          test -x "$HOME/proton-clang/bin/clang"
-
-          # Kernel 4.4 uses the legacy LLVM LTO configuration when available.
-          if grep -q '^config LTO_CLANG' arch/Kconfig 2>/dev/null; then
-            scripts/config --file "$BUILD_DIR/.config" --enable CONFIG_LTO_CLANG || true
-          fi
-
-          if grep -q '^config LTO' arch/Kconfig 2>/dev/null; then
-            scripts/config --file "$BUILD_DIR/.config" --enable CONFIG_LTO || true
-          fi
-
-          make O="$BUILD_DIR" ARCH="$ARCH" \
-            CROSS_COMPILE="$CROSS_COMPILE" \
-            CROSS_COMPILE_ARM32="$CROSS_COMPILE_ARM32" \
-            olddefconfig
-
-          echo "=== LTO CONFIG ==="
-          grep -E '^CONFIG_(LTO|LTO_CLANG)' "$BUILD_DIR/.config" || true
+  
 
       # ============================================================
       # SET AUTOMATIC KERNEL NAME
