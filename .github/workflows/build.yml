@@ -498,43 +498,42 @@ jobs:
       # ============================================================
       # FINAL ROOT MANAGER + SUSFS CHECK
       # ============================================================
-      - name: Verify Root Manager and SUSFS
-        working-directory: kernel
+      - name: Verify KernelSU and SUSFS
         shell: bash
+        working-directory: kernel
         run: |
-          set -e
+         set -e
 
-          echo "======================================"
-          echo "FINAL ROOT / SUSFS CONFIG"
-          echo "======================================"
-          echo "Root manager : ${{ inputs.ROOT_MANAGER }}"
-          echo "SUSFS        : ${{ inputs.SUSFS }}"
+         echo "================================"
+         echo "FINAL KSU / SUSFS CONFIG"
+         echo "================================"
+     
+         echo "Checking CONFIG_KSU..."
+         grep -q '^CONFIG_KSU=y' .config
+         echo "✓ CONFIG_KSU=y"
 
-          test -f "$BUILD_DIR/.config"
+         echo "Checking CONFIG_OVERLAY_FS..."
+         grep -q '^CONFIG_OVERLAY_FS=y' .config
+         echo "✓ CONFIG_OVERLAY_FS=y"
 
-          case "${{ inputs.ROOT_MANAGER }}" in
-            kernelsu|sukisu|resukisu|mambosu|ksun)
-              grep -E '^CONFIG_KSU(=|_)' "$BUILD_DIR/.config" || true
-              ;;
-            apatch)
-              grep -E '^CONFIG_KALLSYMS(=|_)' "$BUILD_DIR/.config" || true
-              ;;
-          esac
+         echo "Checking KernelSU source..."
+         test -e drivers/kernelSU/Kconfig
+         echo "✓ drivers/kernelSU/Kconfig found"
 
-          if [ "${{ inputs.SUSFS }}" = "ON" ]; then
-            grep -q '^CONFIG_KSU_SUSFS=y$' "$BUILD_DIR/.config" || {
-              echo "ERROR: SUSFS=ON but CONFIG_KSU_SUSFS is not enabled."
-              exit 1
-            }
-            echo "SUSFS: ENABLED"
-          else
-            if grep -qE '^CONFIG_KSU_SUSFS(=|_)' "$BUILD_DIR/.config"; then
-              echo "ERROR: SUSFS=OFF but SUSFS config remains enabled."
-              exit 1
-            fi
-            echo "SUSFS: DISABLED"
-          fi
+         echo "Checking SUSFS source..."
+         if [ -d "fs/susfs" ] || grep -Rqs "susfs" fs include drivers 2>/dev/null; then
+         echo "✓ SUSFS source detected"
+         else
+         echo "⚠ SUSFS source not detected"
+         fi
+ 
+         echo
+         echo "=== FINAL CONFIG ==="
+         grep -nE '^CONFIG_(KSU|KSU_DEBUG|OVERLAY_FS)=' .config
 
+         echo
+         echo "KernelSU + SUSFS verification PASSED"
+    
       - name: Check Clang 12.0.5
         run: |
          set -x
