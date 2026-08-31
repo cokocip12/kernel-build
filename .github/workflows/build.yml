@@ -99,16 +99,7 @@ on:
         type: choice
         options:
           - "OFF"
-          - "ON"
-        
-      ZRAM:
-        description: "Enable automatic ZRAM"
-        required: true
-        default: "ON"
-        type: choice
-        options:
-          - ON
-          - OFF
+          - "ON"             
 
       ROOT_MANAGER:
         description: "Pilih Root Manager"
@@ -375,34 +366,7 @@ jobs:
 
          echo "=== KernelSU Config ==="
          grep -nE '^CONFIG_(OVERLAY_FS|KSU|KSU_DEBUG)=' .config
-
-      - name: Enable ZRAM
-        if: ${{ inputs.ZRAM }}
-        working-directory: kernel
-        run: |
-         set -e
-
-         test -f "$BUILD_DIR/.config" || {
-         echo "ERROR: $BUILD_DIR/.config tidak ditemukan"
-         exit 1
-         }
-
-         scripts/config --file "$BUILD_DIR/.config" \
-         --enable CONFIG_ZRAM
-
-         scripts/config --file "$BUILD_DIR/.config" \
-         --enable CONFIG_ZSMALLOC
-
-         make O="$BUILD_DIR" \
-         ARCH="$ARCH" \
-         CROSS_COMPILE="$CROSS_COMPILE" \
-         CROSS_COMPILE_ARM32="$CROSS_COMPILE_ARM32" \
-         olddefconfig
-
-         echo "=== ZRAM CONFIG ==="
-         grep -E '^CONFIG_ZRAM=|^CONFIG_ZSMALLOC=' \
-         "$BUILD_DIR/.config" || true
-
+      
       - name: Configure KALLSYMS for APatch
         if: ${{ inputs.ROOT_MANAGER == 'apatch' }}
         working-directory: kernel
@@ -1130,142 +1094,7 @@ jobs:
           ls -lh \
             "$ANYKERNEL_DIR/Image" \
             "$ANYKERNEL_DIR/Image.lz4" 2>/dev/null || true
-
-      # ==========================================
-      # ZRAM ON/OFF
-      # ==========================================
-      - name: Configure ZRAM
-        shell: bash
-        env:
-          ZRAM_MODE: ${{ inputs.ZRAM }}
-        run: |
-          set -e
-
-          echo "========================================"
-          echo "        SPECTRA ZRAM CONFIG"
-          echo "========================================"
-          echo "Mode: $ZRAM_MODE"
-          echo "========================================"
-
-          mkdir -p AnyKernel3/zram
-
-          if [ "$ZRAM_MODE" = "ON" ]; then
-
-            echo "Automatic ZRAM: ENABLED"
-
-            cat > AnyKernel3/zram/zram-auto.sh <<'EOF'
-          #!/system/bin/sh
-
-          ZRAM="/sys/block/zram0"
-
-          # ZRAM harus tersedia
-          [ -d "$ZRAM" ] || exit 0
-
-          # Ambil RAM dalam MB
-          RAM_MB=$(awk '/MemTotal/ {print int($2/1024)}' /proc/meminfo)
-
-          # ==========================================
-          # SPECTRA ZRAM PROFILE
-          # ==========================================
-
-          if [ "$RAM_MB" -le 3584 ]; then
-              # 3 GB RAM
-              ZRAM_MB=2048
-
-          elif [ "$RAM_MB" -le 5120 ]; then
-              # 4 GB RAM
-              ZRAM_MB=2048
-
-          elif [ "$RAM_MB" -le 7168 ]; then
-              # 6 GB RAM
-              ZRAM_MB=3072
-
-          else
-              # 8 GB+
-              ZRAM_MB=4096
-          fi
-
-          ZRAM_SIZE=$((ZRAM_MB * 1024 * 1024))
-
-          # Stop existing swap
-          swapoff "$ZRAM" 2>/dev/null || true
-
-          # Reset ZRAM
-          echo 1 > "$ZRAM/reset" 2>/dev/null || true
-
-          # Set ZRAM size
-          echo "$ZRAM_SIZE" > "$ZRAM/disksize" || exit 1
-
-          # Initialize swap
-          mkswap "$ZRAM" >/dev/null 2>&1 || exit 1
-
-          # Enable swap
-          swapon -p 32758 "$ZRAM" || exit 1
-
-          exit 0
-          EOF
-
-            chmod 755 AnyKernel3/zram/zram-auto.sh
-
-            # --------------------------------------
-            # Create boot service
-            # --------------------------------------
-
-            cat > AnyKernel3/zram/service.sh <<'EOF'
-          #!/system/bin/sh
-
-          SCRIPT="/data/adb/spectra-zram/zram-auto.sh"
-
-          if [ -f "$SCRIPT" ]; then
-              sh "$SCRIPT"
-          fi
-          EOF
-
-            chmod 755 AnyKernel3/zram/service.sh
-
-            echo "ZRAM configuration created."
-
-          else
-
-            echo "Automatic ZRAM: DISABLED"
-
-            rm -rf AnyKernel3/zram
-
-          fi
-
-      # ==========================================
-      # CREATE ZRAM INSTALLER
-      # ==========================================
-      - name: Create ZRAM installer
-        env:
-          ZRAM_MODE: ${{ inputs.ZRAM }}
-        run: |
-          set -e
-
-          if [ "$ZRAM_MODE" = "ON" ]; then
-
-            mkdir -p AnyKernel3/zram-module
-
-            cat > AnyKernel3/zram-module/module.prop <<'EOF'
-          id=spectra-zram
-          name=SPECTRA Automatic ZRAM
-          version=1.0
-          versionCode=1
-          author=RENZVERSE
-          description=Automatic ZRAM profile for Whyred
-          EOF
-
-            mkdir -p AnyKernel3/zram-module/system/bin
-
-            cp \
-              AnyKernel3/zram/zram-auto.sh \
-              AnyKernel3/zram-module/service.sh
-
-            chmod 755 \
-              AnyKernel3/zram-module/service.sh
-
-          fi
-      
+  
       # ============================================================
       # PACKAGE ANYKERNEL3
       # ============================================================
