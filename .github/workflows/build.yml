@@ -118,7 +118,16 @@ on:
           - apatch
           - resukisu
           - mambosu
-          - Ksun
+          - ksun
+
+      SUSFS:
+        description: "Enable SUSFS"
+        required: true
+        default: "OFF"
+        type: choice
+        options:
+          - ON
+          - OFF
 
 jobs:
   build:
@@ -178,35 +187,6 @@ jobs:
           echo "CLANG_TRIPLE=aarch64-linux-gnu-" >> "$GITHUB_ENV"
           echo "CROSS_COMPILE=aarch64-linux-gnu-" >> "$GITHUB_ENV"
           echo "CROSS_COMPILE_ARM32=arm-linux-gnueabi-" >> "$GITHUB_ENV"
-
-      - name: Configure Proton Clang LTO
-        if: ${{ inputs.LTO == 'on' }}
-        working-directory: kernel
-        run: |
-          set -e
-
-          echo "======================================"
-          echo "PROTON CLANG LTO: ON"
-          echo "======================================"
-
-          test -x "$HOME/proton-clang/bin/clang"
-
-          # Kernel 4.4 uses the legacy LLVM LTO configuration when available.
-          if grep -q '^config LTO_CLANG' arch/Kconfig 2>/dev/null; then
-            scripts/config --file "$BUILD_DIR/.config" --enable CONFIG_LTO_CLANG || true
-          fi
-
-          if grep -q '^config LTO' arch/Kconfig 2>/dev/null; then
-            scripts/config --file "$BUILD_DIR/.config" --enable CONFIG_LTO || true
-          fi
-
-          make O="$BUILD_DIR" ARCH="$ARCH" \
-            CROSS_COMPILE="$CROSS_COMPILE" \
-            CROSS_COMPILE_ARM32="$CROSS_COMPILE_ARM32" \
-            olddefconfig
-
-          echo "=== LTO CONFIG ==="
-          grep -E '^CONFIG_(LTO|LTO_CLANG)' "$BUILD_DIR/.config" || true
 
       # ============================================================
       # DEPENDENCIES + BOTH TOOLCHAINS
@@ -374,6 +354,35 @@ jobs:
             'CONFIG_ARCH_QCOM|CONFIG_ARCH_SDM660|CONFIG_PREEMPT|CONFIG_CC_STACKPROTECTOR' \
             "$BUILD_DIR/.config" || true
 
+      - name: Configure Proton Clang LTO
+        if: ${{ inputs.LTO == 'on' }}
+        working-directory: kernel
+        run: |
+          set -e
+
+          echo "======================================"
+          echo "PROTON CLANG LTO: ON"
+          echo "======================================"
+
+          test -x "$HOME/proton-clang/bin/clang"
+
+          # Kernel 4.4 uses the legacy LLVM LTO configuration when available.
+          if grep -q '^config LTO_CLANG' arch/Kconfig 2>/dev/null; then
+            scripts/config --file "$BUILD_DIR/.config" --enable CONFIG_LTO_CLANG || true
+          fi
+
+          if grep -q '^config LTO' arch/Kconfig 2>/dev/null; then
+            scripts/config --file "$BUILD_DIR/.config" --enable CONFIG_LTO || true
+          fi
+
+          make O="$BUILD_DIR" ARCH="$ARCH" \
+            CROSS_COMPILE="$CROSS_COMPILE" \
+            CROSS_COMPILE_ARM32="$CROSS_COMPILE_ARM32" \
+            olddefconfig
+
+          echo "=== LTO CONFIG ==="
+          grep -E '^CONFIG_(LTO|LTO_CLANG)' "$BUILD_DIR/.config" || true
+
       # ============================================================
       # SET AUTOMATIC KERNEL NAME
       # ============================================================
@@ -408,7 +417,13 @@ jobs:
             *)         KSU_NAME="NoRoot" ;;
           esac
 
-          KERNEL_NAME="-${BASE_NAME}-${VERSION}-${KSU_NAME}-${LTO_NAME}-${LZ4_NAME}"
+          if [ "${{ inputs.SUSFS }}" = "ON" ]; then
+            SUSFS_NAME="SUSFS"
+          else
+            SUSFS_NAME="NoSUSFS"
+          fi
+
+          KERNEL_NAME="-${BASE_NAME}-${VERSION}-${KSU_NAME}-${SUSFS_NAME}-${LTO_NAME}-${LZ4_NAME}"
 
           scripts/config --file "$BUILD_DIR/.config" \
             --set-str CONFIG_LOCALVERSION "$KERNEL_NAME"
@@ -527,7 +542,7 @@ jobs:
          grep -E '^CONFIG_KSU(=|_)' "$BUILD_DIR/.config" || true
 
       - name: Configure KernelSU Next
-        if: ${{ inputs.ROOT_MANAGER == 'Ksun' }}
+        if: ${{ inputs.ROOT_MANAGER == 'ksun' }}
         working-directory: kernel
         run: |
           scripts/config --file "$BUILD_DIR/.config" \
@@ -689,6 +704,46 @@ jobs:
 
           echo ""
           echo "Network tuning configured successfully."
+
+      # ============================================================
+      # FINAL ROOT MANAGER + SUSFS CHECK
+      # ============================================================
+      - name: Verify Root Manager and SUSFS
+        working-directory: kernel
+        shell: bash
+        run: |
+          set -e
+
+          echo "======================================"
+          echo "FINAL ROOT / SUSFS CONFIG"
+          echo "======================================"
+          echo "Root manager : ${{ inputs.ROOT_MANAGER }}"
+          echo "SUSFS        : ${{ inputs.SUSFS }}"
+
+          test -f "$BUILD_DIR/.config"
+
+          case "${{ inputs.ROOT_MANAGER }}" in
+            kernelsu|sukisu|resukisu|mambosu|ksun)
+              grep -E '^CONFIG_KSU(=|_)' "$BUILD_DIR/.config" || true
+              ;;
+            apatch)
+              grep -E '^CONFIG_KALLSYMS(=|_)' "$BUILD_DIR/.config" || true
+              ;;
+          esac
+
+          if [ "${{ inputs.SUSFS }}" = "ON" ]; then
+            grep -q '^CONFIG_KSU_SUSFS=y$' "$BUILD_DIR/.config" || {
+              echo "ERROR: SUSFS=ON but CONFIG_KSU_SUSFS is not enabled."
+              exit 1
+            }
+            echo "SUSFS: ENABLED"
+          else
+            if grep -qE '^CONFIG_KSU_SUSFS(=|_)' "$BUILD_DIR/.config"; then
+              echo "ERROR: SUSFS=OFF but SUSFS config remains enabled."
+              exit 1
+            fi
+            echo "SUSFS: DISABLED"
+          fi
 
       # ============================================================
       # BUILD RAW KERNEL
