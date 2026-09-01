@@ -331,27 +331,6 @@ jobs:
           scripts/config --file "$BUILD_DIR/.config" \
             --enable CONFIG_KSU_TAMPER_SYSCALL_TABLE
 
-      - name: Configure SukiSU-Ultra
-        if: ${{ inputs.ROOT_MANAGER == 'sukisu' }}
-        working-directory: kernel
-        run: |
-          scripts/config --file "$BUILD_DIR/.config" \
-            --enable CONFIG_KSU
-
-          scripts/config --file "$BUILD_DIR/.config" \
-            --enable CONFIG_KSU_TAMPER_SYSCALL_TABLE
-
-      - name: Configure ReSukiSU
-        if: ${{ inputs.ROOT_MANAGER == 'resukisu' }}
-        working-directory: kernel
-        run: |
-          scripts/config --file "$BUILD_DIR/.config" \
-            --enable CONFIG_KSU
-
-          scripts/config --file "$BUILD_DIR/.config" \
-            --enable CONFIG_KSU_TAMPER_SYSCALL_TABLE
-      
-
       # APatch
       - name: Configure APatch
         if: ${{ inputs.ROOT_MANAGER == 'apatch' }}
@@ -462,45 +441,44 @@ jobs:
 
       # ============================================================
       # BUILD RAW KERNEL
-      # ============================================================
-      
+      # ============================================================      
       - name: Build Kernel
         shell: bash
+        working-directory: kernel
         run: |
          set -e
 
-         cd "$KERNEL_DIR"
+         echo "===== CLEAN SOURCE ====="
 
-         export PATH="$CLANG_DIR/bin:$PATH"
-
-         echo "===== TOOLCHAIN ====="
-         which clang
-         clang --version
-
-         which aarch64-linux-gnu-ld
-         aarch64-linux-gnu-ld --version
+         rm -rf .config
+         rm -rf include/config
+         rm -rf include/generated
+         rm -rf arch/arm64/include/generated
+         rm -rf include2
 
          echo "===== DEFCONFIG ====="
-   
-         make O="$BUILD_DIR" \
-         ARCH=arm64 \
+
+         make ARCH=arm64 \
          CROSS_COMPILE=aarch64-linux-gnu- \
          CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
          CC=clang \
          LLVM=1 \
          LLVM_IAS=1 \
          whyred_defconfig
-  
+
          echo "===== BUILD ====="
 
          make -j"$(nproc)" \
-         O="$BUILD_DIR" \
          ARCH=arm64 \
          CROSS_COMPILE=aarch64-linux-gnu- \
          CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
          CC=clang \
          LLVM=1 \
          LLVM_IAS=1
+
+         echo "===== BUILD SUCCESS ====="
+
+         ls -lh arch/arm64/boot/
 
       # ============================================================
       # LZ4HC OPTIONAL
