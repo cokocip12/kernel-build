@@ -263,18 +263,42 @@ jobs:
          set -e
 
          echo "=== Loading Whyred defconfig ==="
-         make ARCH=arm64 whyred_defconfig
 
-         echo "=== Enable KernelSU ==="        
-         scripts/config --enable CONFIG_OVERLAY_FS
-         scripts/config --enable CONFIG_KSU
-         scripts/config --enable CONFIG_KSU_DEBUG
+         make O="$BUILD_DIR" \
+         ARCH=arm64 \
+         CROSS_COMPILE="$CROSS_COMPILE" \
+         CROSS_COMPILE_ARM32="$CROSS_COMPILE_ARM32" \
+         CC=clang \
+         LLVM=1 \
+         LLVM_IAS=1 \
+         whyred_defconfig
+
+         echo "=== Enable KernelSU ==="
+
+         scripts/config --file "$BUILD_DIR/.config" \
+         --enable CONFIG_OVERLAY_FS
+
+         scripts/config --file "$BUILD_DIR/.config" \
+         --enable CONFIG_KSU
+
+         scripts/config --file "$BUILD_DIR/.config" \
+         --enable CONFIG_KSU_DEBUG
 
          echo "=== Update kernel config ==="
-         make ARCH=arm64 olddefconfig
+
+         make O="$BUILD_DIR" \
+         ARCH=arm64 \
+         CROSS_COMPILE="$CROSS_COMPILE" \
+         CROSS_COMPILE_ARM32="$CROSS_COMPILE_ARM32" \
+         CC=clang \
+         LLVM=1 \
+         LLVM_IAS=1 \
+         olddefconfig
 
          echo "=== KernelSU Config ==="
-         grep -nE '^CONFIG_(OVERLAY_FS|KSU|KSU_DEBUG)=' .config
+
+         grep -nE '^CONFIG_(OVERLAY_FS|KSU|KSU_DEBUG)=' \
+         "$BUILD_DIR/.config"
       
       - name: Configure KALLSYMS for APatch
         if: ${{ inputs.ROOT_MANAGER == 'apatch' }}
@@ -326,37 +350,7 @@ jobs:
 
           scripts/config --file "$BUILD_DIR/.config" \
             --enable CONFIG_KSU_TAMPER_SYSCALL_TABLE
-
-      - name: Configure MamboSU
-        if: ${{ inputs.ROOT_MANAGER == 'mambosu' }}
-        working-directory: kernel
-        run: |
-         echo "=== Configuring MamboSU ==="
-
-         scripts/config --file "$BUILD_DIR/.config" \
-         --enable CONFIG_KSU
-
-         scripts/config --file "$BUILD_DIR/.config" \
-         --enable CONFIG_KSU_TAMPER_SYSCALL_TABLE
-
-         make O="$BUILD_DIR" \
-         ARCH="$ARCH" \
-         CROSS_COMPILE="$CROSS_COMPILE" \
-         CROSS_COMPILE_ARM32="$CROSS_COMPILE_ARM32" \
-         olddefconfig
-
-         echo "=== MamboSU configuration ==="
-         grep -E '^CONFIG_KSU(=|_)' "$BUILD_DIR/.config" || true
-
-      - name: Configure KernelSU Next
-        if: ${{ inputs.ROOT_MANAGER == 'ksun' }}
-        working-directory: kernel
-        run: |
-          scripts/config --file "$BUILD_DIR/.config" \
-            --enable CONFIG_KSU
-
-          scripts/config --file "$BUILD_DIR/.config" \
-            --enable CONFIG_KSU_TAMPER_SYSCALL_TABLE
+      
 
       # APatch
       - name: Configure APatch
