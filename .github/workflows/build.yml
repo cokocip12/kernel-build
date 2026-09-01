@@ -31,6 +31,15 @@ on:
         default: true
         type: boolean    
 
+      LTO:
+        description: "Enable Clang LTO"
+        required: true
+        default: "off"
+        type: choice
+        options:
+          - "off"
+          - "on"
+
       LZ4HC:
         description: "Compress kernel with LZ4HC"
         required: true
@@ -299,6 +308,53 @@ jobs:
 
          grep -nE '^CONFIG_(OVERLAY_FS|KSU|KSU_DEBUG)=' \
          "$BUILD_DIR/.config"
+
+      - name: Configure LTO
+        working-directory: kernel
+        shell: bash
+        run: |
+          set -e
+
+          if [ "${{ inputs.LTO }}" = "on" ]; then
+            echo "======================================"
+            echo "LTO: ON"
+            echo "======================================"
+
+            scripts/config --file "$BUILD_DIR/.config" \
+              --enable CONFIG_LTO_CLANG
+
+            scripts/config --file "$BUILD_DIR/.config" \
+              --enable CONFIG_LTO_CLANG_THIN
+
+            scripts/config --file "$BUILD_DIR/.config" \
+              --disable CONFIG_LTO_CLANG_FULL
+          else
+            echo "======================================"
+            echo "LTO: OFF"
+            echo "======================================"
+
+            scripts/config --file "$BUILD_DIR/.config" \
+              --disable CONFIG_LTO_CLANG
+
+            scripts/config --file "$BUILD_DIR/.config" \
+              --disable CONFIG_LTO_CLANG_THIN
+
+            scripts/config --file "$BUILD_DIR/.config" \
+              --disable CONFIG_LTO_CLANG_FULL
+          fi
+
+          make O="$BUILD_DIR" \
+            ARCH=arm64 \
+            CROSS_COMPILE="$CROSS_COMPILE" \
+            CROSS_COMPILE_ARM32="$CROSS_COMPILE_ARM32" \
+            CC=clang \
+            LLVM=1 \
+            LLVM_IAS=1 \
+            olddefconfig
+
+          echo "=== FINAL LTO CONFIG ==="
+          grep -E '^CONFIG_LTO' "$BUILD_DIR/.config" || true
+
       
       - name: Configure KALLSYMS for APatch
         if: ${{ inputs.ROOT_MANAGER == 'apatch' }}
@@ -446,25 +502,7 @@ jobs:
         shell: bash
         working-directory: kernel
         run: |
-          set -e
-
-          echo "======================================"
-          echo "BUILD WHYRED KERNEL"
-          echo "======================================"
-
-          mkdir -p "$BUILD_DIR"
-
-          echo "===== USING EXISTING CONFIG ====="
-
-          test -f "$BUILD_DIR/.config" || {
-            echo "ERROR: $BUILD_DIR/.config tidak ditemukan!"
-            exit 1
-          }
-
-          grep -E '^CONFIG_(KSU|OVERLAY_FS|KALLSYMS)=' \
-            "$BUILD_DIR/.config" || true
-
-          echo "===== BUILD ====="
+          set -o pipefail
 
           make -j"$(nproc)" \
             O="$BUILD_DIR" \
@@ -474,12 +512,15 @@ jobs:
             CC=clang \
             LLVM=1 \
             LLVM_IAS=1 \
-            KCFLAGS="$KCFLAGS" \
-            V=1
+            V=1 2>&1 | tee "$GITHUB_WORKSPACE/build.log"
 
-          echo "===== BUILD SUCCESS ====="
+          status=${PIPESTATUS[0]}
 
-          ls -lah "$BUILD_DIR/arch/arm64/boot/"
+          echo "===== ERROR SEARCH ====="
+          grep -nEi 'error:|fatal error:|undefined reference|Error [0-9]+|No rule to make|recipe for target' \
+            "$GITHUB_WORKSPACE/build.log" | tail -30 || true
+
+          exit "$status"
 
       # ============================================================
       # LZ4HC OPTIONAL
